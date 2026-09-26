@@ -29,3 +29,5 @@ Thumbs.db
 *.log
 dist/
 packages/cli/examples/out/
+packages/web/.next/
+packages/web/out/

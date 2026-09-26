@@ -10,7 +10,15 @@
     "cli:build": "ts-node packages/cli/src/index.ts build",
     "deploy": "hardhat run scripts/deploy.ts",
     "deploy:rh": "hardhat run scripts/deploy.ts --network robinhoodTestnet",
-    "deploy:arb": "hardhat run scripts/deploy.ts --network arbitrumSepolia"
+    "deploy:arb": "hardhat run scripts/deploy.ts --network arbitrumSepolia",
+    "demo:node": "hardhat node",
+    "demo:deploy": "hardhat run scripts/deploy.ts --network localhost",
+    "demo:cli": "ts-node scripts/demo-cli-build.ts",
+    "demo:web": "npm run dev --prefix packages/web",
+    "demo:warp": "hardhat run scripts/demo-warp.ts --network localhost",
+    "demo:prepare": "hardhat run scripts/demo-scene.ts --network localhost",
+    "ops:publish": "hardhat run scripts/publish-epoch.ts --network localhost",
+    "ops:sample": "hardhat run scripts/record-samples.ts --network localhost"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-chai-matchers": "^2.0.8",

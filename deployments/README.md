@@ -4,10 +4,12 @@ JSON address books written by `scripts/deploy.ts`.
 
 | File | Network |
 |---|---|
-| `hardhat.json` | Local Hardhat (ephemeral) |
+| `hardhat.json` | In-process Hardhat (ephemeral) |
+| `localhost.json` | `npx hardhat node` / `npm run demo:deploy` |
 | `robinhoodTestnet.json` | Robinhood Chain testnet `46630` |
 | `arbitrumSepolia.json` | Arbitrum Sepolia `421614` |
 
+Each deploy also registers a reserve wallet, mints mock stock reserves, configures MockStockToken + USDG, links ExitRight, and deploys `GatedPayout` / `GatedLendWithdraw` for the demo asset.
 ## How to deploy
 
 1. Copy `.env.example` → `.env`
@@ -22,4 +24,4 @@ npm run deploy:rh    # Robinhood testnet — uses official USDG 0x7E95…802F
 npm run deploy:arb   # Arbitrum Sepolia — uses official USDG 0xFFC9…0892
 ```
 
-Each run registers custodian `kopi`, configures MockStockToken + USDG, and links ExitRight into SolvencyOracle.
+Each run registers custodian `kopi`, a signed exclusive reserve wallet, configures MockStockToken + USDG, links ExitRight into SolvencyOracle, and deploys gated composers.

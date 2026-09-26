@@ -9,11 +9,14 @@ Open-source proof of reserves and proof of exit for custodians of **USDG** and *
 
 See [docs/technical-spec.md](docs/technical-spec.md) for the full design.
 
+Hackathon packet: [docs/SUBMISSION.md](docs/SUBMISSION.md) · [docs/VERIFY.md](docs/VERIFY.md)
+
 ## Stack
 
 - Solidity 0.8.24
 - Hardhat (compile / test) — Foundry layout is present; `forge` may be blocked by Windows Application Control on some machines
 - OpenZeppelin Contracts 5.1.0
+- Next.js + wagmi + viem demo UI (`packages/web`)
 
 ## Quick start
 
@@ -22,6 +25,29 @@ npm install
 npm test
 npm run build
 ```
+
+## Local Kopi Wallet demo (no testnet gas)
+
+```bash
+# terminal A
+npm run demo:node
+
+# terminal B
+npm run demo:deploy
+npm run demo:cli
+npm run ops:publish
+npm run ops:sample
+npm run demo:web
+# → http://localhost:3000 — scenes 1–7
+
+# fail-closed scenes (against the running node)
+SCENE=4 npm run demo:prepare   # drain → payout blocked
+SCENE=5 npm run demo:prepare   # MULTIPLIER_DRIFT
+npm run demo:warp              # or SCENE=6 npm run demo:prepare → STALE
+SCENE=7 npm run demo:prepare   # DISPUTED
+```
+
+Operator aliases: `ops:publish` (commitEpoch from `out/root.json`), `ops:sample` (recordSample).
 
 ## CLI — CSV → Merkle proofs
 

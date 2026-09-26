@@ -14,12 +14,13 @@ const REMOVAL_DELAY = 3600;
 const CUSTODIAN_NAME = process.env.CUSTODIAN_NAME || "kopi";
 
 async function main() {
-  const [deployer] = await ethers.getSigners();
+  const [deployer, reserveWallet] = await ethers.getSigners();
   const network = await ethers.provider.getNetwork();
   const networkName = hre.network.name;
   const chainId = Number(network.chainId);
 
   console.log(`Deployer: ${deployer.address}`);
+  console.log(`Reserve wallet: ${reserveWallet.address}`);
   console.log(`Network:  ${networkName} (chainId ${chainId})`);
   console.log(
     `Balance:  ${ethers.formatEther(await ethers.provider.getBalance(deployer.address))} ETH`
@@ -101,6 +102,22 @@ async function main() {
   await (await registry.registerCustodian(custodianId, deployer.address, REMOVAL_DELAY)).wait();
   console.log(`Custodian registered: ${CUSTODIAN_NAME} → ${custodianId}`);
 
+  // Ownership proof: keccak(custodianId, chainId, wallet, registry) signed by wallet
+  const msgHash = ethers.keccak256(
+    ethers.AbiCoder.defaultAbiCoder().encode(
+      ["bytes32", "uint64", "address", "address"],
+      [custodianId, chainId, reserveWallet.address, await registry.getAddress()]
+    )
+  );
+  const sig = await reserveWallet.signMessage(ethers.getBytes(msgHash));
+  await (await registry.addReserveWallet(custodianId, chainId, reserveWallet.address, sig)).wait();
+  console.log(`Reserve wallet registered: ${reserveWallet.address}`);
+
+  // Seed reserves well above 103% of example liabilities (500e18 total in CLI sample CSV)
+  const seedAmount = ethers.parseEther("1000");
+  await (await stock.mint(reserveWallet.address, seedAmount)).wait();
+  console.log(`Minted ${ethers.formatEther(seedAmount)} mTSLA to reserve wallet`);
+
   await (
     await assetConfig.setAssetConfig(
       custodianId,
@@ -133,11 +150,30 @@ async function main() {
   ).wait();
   console.log("AssetConfig: USDG configured");
 
+  const GatedPayout = await ethers.getContractFactory("GatedPayout");
+  const gatedPayout = await GatedPayout.deploy(
+    await oracle.getAddress(),
+    custodianId,
+    await stock.getAddress()
+  );
+  await gatedPayout.waitForDeployment();
+  console.log(`GatedPayout: ${await gatedPayout.getAddress()}`);
+
+  const GatedLend = await ethers.getContractFactory("GatedLendWithdraw");
+  const gatedLend = await GatedLend.deploy(
+    await oracle.getAddress(),
+    custodianId,
+    await stock.getAddress()
+  );
+  await gatedLend.waitForDeployment();
+  console.log(`GatedLendWithdraw: ${await gatedLend.getAddress()}`);
+
   const deployment = {
     network: networkName,
     chainId,
     deployedAt: new Date().toISOString(),
     deployer: deployer.address,
+    reserveWallet: reserveWallet.address,
     custodianName: CUSTODIAN_NAME,
     custodianId,
     contracts: {
@@ -148,6 +184,8 @@ async function main() {
       DisputeModule: await disputes.getAddress(),
       SolvencyOracle: await oracle.getAddress(),
       ExitRight: await exitRight.getAddress(),
+      GatedPayout: await gatedPayout.getAddress(),
+      GatedLendWithdraw: await gatedLend.getAddress(),
       MockStockToken: await stock.getAddress(),
       USDG: usdgAddress,
     },
