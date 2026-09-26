@@ -10,7 +10,7 @@ coverage.json
 out/
 cache_forge/
 broadcast/
-lib/
+/lib/
 
 # Env
 .env
