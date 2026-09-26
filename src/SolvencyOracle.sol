@@ -79,6 +79,10 @@ contract SolvencyOracle is Ownable {
             return RPTypes.SolvencyStatus(false, epochId, ep.committedAt, RPTypes.REASON_DISPUTED);
         }
 
+        if (disputes.hasOverdueChallenge(custodianId, asset)) {
+            return RPTypes.SolvencyStatus(false, epochId, ep.committedAt, RPTypes.REASON_DISPUTED);
+        }
+
         if (address(exitRight) != address(0) && exitRight.hasExitDefault(custodianId, asset)) {
             return RPTypes.SolvencyStatus(false, epochId, ep.committedAt, RPTypes.REASON_EXIT_DEFAULT);
         }
