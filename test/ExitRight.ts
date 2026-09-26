@@ -55,7 +55,7 @@ describe("ExitRight", function () {
     await ethers.provider.send("evm_mine", []);
 
     const bondBefore = await f.usdg.balanceOf(f.userA.address);
-    await f.exitRight.slash(f.custodianId, claimId);
+    await f.exitRight.slash(claimId);
 
     expect(await f.exitRight.hasExitDefault(f.custodianId, asset)).to.equal(true);
     expect(await f.usdg.balanceOf(f.userA.address)).to.equal(bondBefore + 1_000_000n);

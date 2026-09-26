@@ -66,13 +66,16 @@ async function main() {
   console.log(`Allocation: ${allocation.toString()}`);
   console.log(`Multiplier snapshot: ${multiplier.toString()}`);
 
+  const network = await ethers.provider.getNetwork();
+  const chainId = Number(network.chainId);
   const tx = await ledger.commitEpoch(
     custodianId,
     asset,
     epochId,
     liabilityRoot,
     totalLiability,
-    allocation,
+    [chainId],
+    [allocation],
     multiplier,
     unitMode
   );

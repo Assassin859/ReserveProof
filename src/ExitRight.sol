@@ -24,10 +24,12 @@ contract ExitRight is ReentrancyGuard {
     }
 
     struct Claim {
+        bytes32 custodianId;
         address user;
         address asset;
         uint64 epochId;
         uint256 amount;
+        uint256 bondReserved;
         uint64 deadline;
         bool open;
         bool settled;
@@ -38,7 +40,7 @@ contract ExitRight is ReentrancyGuard {
     mapping(bytes32 => uint256) public bondBalance;
     mapping(bytes32 => uint256) public bondInFlight;
     mapping(bytes32 => mapping(address => bool)) public exitDefault;
-    mapping(bytes32 => mapping(address => mapping(address => mapping(uint64 => bool)))) public claimed; // custodian => asset => user => epoch
+    mapping(bytes32 => mapping(address => mapping(address => mapping(uint64 => bool)))) public claimed;
     mapping(uint256 => Claim) public claims;
     uint256 public nextClaimId;
 
@@ -51,13 +53,13 @@ contract ExitRight is ReentrancyGuard {
     error NotOperator();
     error BadConfig();
     error NoEpoch();
-    error NotLatest();
     error AlreadyClaimed();
     error BadProof();
     error BondCap();
     error NotOpen();
     error TooEarly();
     error TransferFailed();
+    error WrongCustodian();
 
     constructor(CustodianRegistry registry_, LiabilityLedger ledger_, address bondToken_) {
         registry = registry_;
@@ -73,7 +75,12 @@ contract ExitRight is ReentrancyGuard {
     ) external {
         (address op, , ) = registry.custodians(custodianId);
         if (msg.sender != op) revert NotOperator();
-        if (maxPayoutDelay == 0) revert BadConfig();
+        if (maxPayoutDelay == 0 || maxBondPerClaim == 0) revert BadConfig();
+        // Do not allow shrinking per-claim cap while bond is in flight (open claims use frozen reserved).
+        BondConfig memory prev = bondConfigs[custodianId];
+        if (prev.set && bondInFlight[custodianId] > 0 && maxBondPerClaim < prev.maxBondPerClaim) {
+            revert BadConfig();
+        }
         bondConfigs[custodianId] = BondConfig({
             bondAmount: bondBalance[custodianId],
             maxPayoutDelay: maxPayoutDelay,
@@ -100,7 +107,7 @@ contract ExitRight is ReentrancyGuard {
         MerkleSumVerifier.ProofNode[] calldata siblings
     ) external nonReentrant returns (uint256 claimId) {
         BondConfig memory bc = bondConfigs[custodianId];
-        if (!bc.set) revert BadConfig();
+        if (!bc.set || bc.maxBondPerClaim == 0) revert BadConfig();
 
         uint64 epochId = ledger.latestEpochId(custodianId, asset);
         if (epochId == 0) revert NoEpoch();
@@ -120,10 +127,7 @@ contract ExitRight is ReentrancyGuard {
             )
         ) revert BadProof();
 
-        uint256 bondNeed = amount < bc.maxBondPerClaim ? amount : bc.maxBondPerClaim;
-        // Bond is in USDG; for same-asset stock payouts, bondNeed is a USDG cap notionally —
-        // MVP: bond escrow uses maxBondPerClaim directly as USDG units reserved.
-        bondNeed = bc.maxBondPerClaim;
+        uint256 bondNeed = bc.maxBondPerClaim;
         if (bondInFlight[custodianId] + bondNeed > bc.maxBondTotalInFlight) revert BondCap();
         if (bondNeed > bondBalance[custodianId]) revert BondCap();
 
@@ -132,10 +136,12 @@ contract ExitRight is ReentrancyGuard {
 
         claimId = nextClaimId++;
         claims[claimId] = Claim({
+            custodianId: custodianId,
             user: msg.sender,
             asset: asset,
             epochId: epochId,
             amount: amount,
+            bondReserved: bondNeed,
             deadline: uint64(block.timestamp) + bc.maxPayoutDelay,
             open: true,
             settled: false,
@@ -150,35 +156,34 @@ contract ExitRight is ReentrancyGuard {
         if (msg.sender != op) revert NotOperator();
         Claim storage c = claims[claimId];
         if (!c.open || c.settled || c.slashed) revert NotOpen();
+        if (c.custodianId != custodianId) revert WrongCustodian();
 
-        // Pull asset from operator and forward to user (same-token payout).
         IERC20Minimal token = IERC20Minimal(c.asset);
         if (!token.transferFrom(msg.sender, c.user, c.amount)) revert TransferFailed();
 
         c.open = false;
         c.settled = true;
-        BondConfig memory bc = bondConfigs[custodianId];
-        uint256 reserved = bc.maxBondPerClaim;
+        uint256 reserved = c.bondReserved;
         if (bondInFlight[custodianId] >= reserved) bondInFlight[custodianId] -= reserved;
         else bondInFlight[custodianId] = 0;
         emit ClaimSettled(claimId);
     }
 
-    function slash(bytes32 custodianId, uint256 claimId) external nonReentrant {
+    function slash(uint256 claimId) external nonReentrant {
         Claim storage c = claims[claimId];
         if (!c.open || c.settled || c.slashed) revert NotOpen();
         if (block.timestamp < c.deadline) revert TooEarly();
 
-        BondConfig memory bc = bondConfigs[custodianId];
-        uint256 pay = bc.maxBondPerClaim;
+        bytes32 custodianId = c.custodianId;
+        uint256 pay = c.bondReserved;
         if (pay > bondBalance[custodianId]) pay = bondBalance[custodianId];
 
         c.open = false;
         c.slashed = true;
         exitDefault[custodianId][c.asset] = true;
         bondBalance[custodianId] -= pay;
-        if (bondInFlight[custodianId] >= bc.maxBondPerClaim) {
-            bondInFlight[custodianId] -= bc.maxBondPerClaim;
+        if (bondInFlight[custodianId] >= c.bondReserved) {
+            bondInFlight[custodianId] -= c.bondReserved;
         } else {
             bondInFlight[custodianId] = 0;
         }

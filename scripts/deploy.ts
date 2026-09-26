@@ -76,7 +76,8 @@ async function main() {
     await assetConfig.getAddress(),
     await ledger.getAddress(),
     await sampler.getAddress(),
-    await disputes.getAddress()
+    await disputes.getAddress(),
+    deployer.address
   );
   await oracle.waitForDeployment();
   console.log(`SolvencyOracle: ${await oracle.getAddress()}`);

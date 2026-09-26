@@ -32,7 +32,8 @@ export async function deployFixture(opts?: { maxOracleAge?: number; minSamples?:
     await assetConfig.getAddress(),
     await ledger.getAddress(),
     await sampler.getAddress(),
-    await disputes.getAddress()
+    await disputes.getAddress(),
+    owner.address
   );
 
   const USDG = await ethers.getContractFactory("MockUSDG");
@@ -114,7 +115,17 @@ export async function commitAndSample(
 
   await f.ledger
     .connect(f.operator)
-    .commitEpoch(f.custodianId, asset, epochId, root, total, total, ethers.parseEther("1"), 0);
+    .commitEpoch(
+      f.custodianId,
+      asset,
+      epochId,
+      root,
+      total,
+      [f.chainId],
+      [total],
+      ethers.parseEther("1"),
+      0
+    );
 
   await f.sampler.connect(f.operator).setSampleWallets(f.custodianId, asset, [f.wallet1.address]);
 

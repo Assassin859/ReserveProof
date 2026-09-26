@@ -36,13 +36,16 @@ contract LiabilityLedger {
         assetConfig = assetConfig_;
     }
 
+    /// @notice Commit an epoch. `allocationChainIds` / `allocations` must cover every chain slice
+    ///         and sum exactly to `totalLiability`. Local `allocation` is the entry for this chain.
     function commitEpoch(
         bytes32 custodianId,
         address asset,
         uint64 epochId,
         bytes32 liabilityRoot,
         uint256 totalLiability,
-        uint256 allocation,
+        uint64[] calldata allocationChainIds,
+        uint256[] calldata allocations,
         uint256 multiplierSnapshot,
         uint8 unitMode
     ) external {
@@ -53,27 +56,20 @@ contract LiabilityLedger {
         AssetConfig.Config memory cfg = assetConfig.getConfig(custodianId, asset);
         if (!cfg.exists) revert NoConfig();
         if (epochId == 0 || epochId <= latestEpochId[custodianId][asset]) revert BadEpoch();
-        if (allocation == 0 || allocation > totalLiability) revert BadAllocation();
         if (unitMode != cfg.unitMode) revert BadEpoch();
+
+        uint256 allocation = _localAllocation(cfg.chainId, totalLiability, allocationChainIds, allocations);
 
         if (cfg.isStockToken) {
             uint256 liveMul = IERC8056(cfg.token).uiMultiplier();
             uint256 pendingAt = IERC8056(cfg.token).effectiveAt();
-            if (pendingAt != 0 && pendingAt > block.timestamp) {
-                // pending scheduled — allow commit only if snapshot matches current live mul
-            }
-            if (pendingAt != 0 && pendingAt <= block.timestamp) {
-                // pending already effective path handled by uiMultiplier()
-            }
             if (unitMode == RPTypes.UNIT_ECONOMIC) {
                 if (multiplierSnapshot == 0) revert MultiplierRequired();
                 if (multiplierSnapshot != liveMul) revert MultiplierRequired();
             }
-            // Always store live multiplier for drift detection in RAW mode too.
             if (multiplierSnapshot == 0) multiplierSnapshot = liveMul;
             else if (multiplierSnapshot != liveMul) revert MultiplierRequired();
 
-            // Reject commit if a future pending update is already scheduled (forces clear schedule).
             uint256 newMul = IERC8056(cfg.token).newUIMultiplier();
             if (pendingAt > block.timestamp && newMul != liveMul) revert PendingMultiplier();
         } else if (multiplierSnapshot == 0) {
@@ -99,5 +95,31 @@ contract LiabilityLedger {
         uint64 epochId
     ) external view returns (RPTypes.Epoch memory) {
         return epochs[custodianId][asset][epochId];
+    }
+
+    function _localAllocation(
+        uint64 localChainId,
+        uint256 totalLiability,
+        uint64[] calldata allocationChainIds,
+        uint256[] calldata allocations
+    ) internal pure returns (uint256 local) {
+        if (allocationChainIds.length == 0 || allocationChainIds.length != allocations.length) {
+            revert BadAllocation();
+        }
+        uint256 sum;
+        bool found;
+        for (uint256 i = 0; i < allocations.length; i++) {
+            if (allocations[i] == 0) revert BadAllocation();
+            // Reject duplicate chain ids.
+            for (uint256 j = 0; j < i; j++) {
+                if (allocationChainIds[j] == allocationChainIds[i]) revert BadAllocation();
+            }
+            sum += allocations[i];
+            if (allocationChainIds[i] == localChainId) {
+                local = allocations[i];
+                found = true;
+            }
+        }
+        if (!found || sum != totalLiability) revert BadAllocation();
     }
 }

@@ -79,11 +79,7 @@ library MerkleSumVerifier {
         return computed == root && computedSum == totalSum;
     }
 
-    /// @notice Verify that `missing` sorts strictly between leftUser and rightUser leaves
-    ///         and that those two leaves are adjacent under the root (neighbour omission proof).
-    /// @dev Caller supplies inclusion proofs for left and right neighbours; we check ordering
-    ///      and that reconstituting the tree yields the same root. Simplified MVP: verify both
-    ///      inclusions independently and enforce leftUser < missing < rightUser (address order).
+    /// @notice Verify that `missing` sorts strictly between leftUser and rightUser.
     function verifyOmissionBounds(
         address missing,
         address leftUser,
@@ -92,7 +88,33 @@ library MerkleSumVerifier {
         if (leftUser == address(0) && rightUser == address(0)) return false;
         if (leftUser != address(0) && !(leftUser < missing)) return false;
         if (rightUser != address(0) && !(missing < rightUser)) return false;
-        // At least one bound required; both preferred for interior gaps.
+        return true;
+    }
+
+    /// @notice True if left and right leaves are direct siblings under the tree
+    ///         (required for interior omission so a present user cannot fake a gap).
+    function verifyAdjacentSiblings(
+        bytes32 leftLeaf,
+        uint256 leftAmount,
+        ProofNode[] memory leftSiblings,
+        bytes32 rightLeaf,
+        uint256 rightAmount,
+        ProofNode[] memory rightSiblings
+    ) internal pure returns (bool) {
+        if (leftSiblings.length == 0 || leftSiblings.length != rightSiblings.length) return false;
+        ProofNode memory ls0 = leftSiblings[0];
+        ProofNode memory rs0 = rightSiblings[0];
+        // Left child sees right sibling (isLeft=false); right child sees left sibling (isLeft=true).
+        if (ls0.isLeft || !rs0.isLeft) return false;
+        if (ls0.hash != rightLeaf || ls0.sum != rightAmount) return false;
+        if (rs0.hash != leftLeaf || rs0.sum != leftAmount) return false;
+        for (uint256 i = 1; i < leftSiblings.length; i++) {
+            if (
+                leftSiblings[i].hash != rightSiblings[i].hash ||
+                leftSiblings[i].sum != rightSiblings[i].sum ||
+                leftSiblings[i].isLeft != rightSiblings[i].isLeft
+            ) return false;
+        }
         return true;
     }
 }

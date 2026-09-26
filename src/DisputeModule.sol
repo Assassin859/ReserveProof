@@ -31,6 +31,8 @@ contract DisputeModule is EIP712 {
 
     mapping(bytes32 => mapping(address => Dispute)) public disputes;
     mapping(bytes32 => mapping(address => bool)) public isDisputed;
+    /// @dev Prevents replaying the same signed balance statement after a dispute is cleared.
+    mapping(bytes32 => bool) public usedStatements;
 
     event DisputeOpened(bytes32 indexed custodianId, address indexed asset, address user, uint64 epochId);
     event DisputeClearable(
@@ -48,6 +50,8 @@ contract DisputeModule is EIP712 {
     error NoDispute();
     error NotClearable();
     error BadBounds();
+    error StatementUsed();
+    error NotNewerEpoch();
 
     constructor(
         CustodianRegistry registry_,
@@ -72,7 +76,7 @@ contract DisputeModule is EIP712 {
         if (isDisputed[custodianId][asset]) revert AlreadyDisputed();
         if (provedAmount == statedAmount) revert BadProof();
 
-        _assertStatement(custodianId, asset, epochId, user, statedAmount, statementSig);
+        bytes32 stmtHash = _assertStatement(custodianId, asset, epochId, user, statedAmount, statementSig);
 
         RPTypes.Epoch memory ep = ledger.getEpoch(custodianId, asset, epochId);
         if (!ep.exists) revert BadProof();
@@ -89,6 +93,7 @@ contract DisputeModule is EIP712 {
             )
         ) revert BadProof();
 
+        usedStatements[stmtHash] = true;
         _open(custodianId, asset, user, epochId, statedAmount);
     }
 
@@ -107,12 +112,14 @@ contract DisputeModule is EIP712 {
         MerkleSumVerifier.ProofNode[] calldata rightSiblings
     ) external {
         if (isDisputed[custodianId][asset]) revert AlreadyDisputed();
-        _assertStatement(custodianId, asset, epochId, user, statedAmount, statementSig);
+        bytes32 stmtHash = _assertStatement(custodianId, asset, epochId, user, statedAmount, statementSig);
         if (!MerkleSumVerifier.verifyOmissionBounds(user, leftUser, rightUser)) revert BadBounds();
 
         RPTypes.Epoch memory ep = ledger.getEpoch(custodianId, asset, epochId);
         if (!ep.exists) revert BadProof();
 
+        bytes32 leftLeaf;
+        bytes32 rightLeaf;
         if (leftUser != address(0)) {
             if (
                 !MerkleSumVerifier.verifyInclusion(
@@ -126,6 +133,7 @@ contract DisputeModule is EIP712 {
                     leftSiblings
                 )
             ) revert BadProof();
+            leftLeaf = MerkleSumVerifier.leafHash(custodianId, asset, epochId, leftUser, leftAmount);
         }
         if (rightUser != address(0)) {
             if (
@@ -140,8 +148,24 @@ contract DisputeModule is EIP712 {
                     rightSiblings
                 )
             ) revert BadProof();
+            rightLeaf = MerkleSumVerifier.leafHash(custodianId, asset, epochId, rightUser, rightAmount);
         }
 
+        // Interior omissions must use adjacent sibling neighbours.
+        if (leftUser != address(0) && rightUser != address(0)) {
+            if (
+                !MerkleSumVerifier.verifyAdjacentSiblings(
+                    leftLeaf,
+                    leftAmount,
+                    leftSiblings,
+                    rightLeaf,
+                    rightAmount,
+                    rightSiblings
+                )
+            ) revert BadBounds();
+        }
+
+        usedStatements[stmtHash] = true;
         _open(custodianId, asset, user, epochId, statedAmount);
     }
 
@@ -155,6 +179,7 @@ contract DisputeModule is EIP712 {
         if (msg.sender != op) revert NotOperator();
         Dispute storage d = disputes[custodianId][asset];
         if (!d.open) revert NoDispute();
+        if (matchingEpochId <= d.epochId) revert NotNewerEpoch();
 
         RPTypes.Epoch memory ep = ledger.getEpoch(custodianId, asset, matchingEpochId);
         if (!ep.exists) revert BadProof();
@@ -212,11 +237,10 @@ contract DisputeModule is EIP712 {
         address user,
         uint256 amount,
         bytes calldata sig
-    ) internal view {
+    ) internal view returns (bytes32 structHash) {
         (address op, , ) = registry.custodians(custodianId);
-        bytes32 structHash = keccak256(
-            abi.encode(BALANCE_TYPEHASH, custodianId, asset, epochId, user, amount)
-        );
+        structHash = keccak256(abi.encode(BALANCE_TYPEHASH, custodianId, asset, epochId, user, amount));
+        if (usedStatements[structHash]) revert StatementUsed();
         address signer = ECDSA.recover(_hashTypedDataV4(structHash), sig);
         if (signer != op) revert BadSignature();
     }

@@ -90,7 +90,8 @@ contract CustodianRegistry is Ownable {
 
     function finalizeWalletRemoval(bytes32 id, uint64 chainId, address wallet) external onlyOperator(id) {
         if (!isReserveWallet[id][chainId][wallet]) revert NotReserveWallet();
-        if (block.timestamp < removalReadyAt[id][chainId][wallet]) revert RemovalNotReady();
+        uint64 readyAt = removalReadyAt[id][chainId][wallet];
+        if (readyAt == 0 || block.timestamp < readyAt) revert RemovalNotReady();
         isReserveWallet[id][chainId][wallet] = false;
         delete walletOwner[chainId][wallet];
         delete removalReadyAt[id][chainId][wallet];

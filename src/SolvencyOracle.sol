@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {CustodianRegistry} from "./CustodianRegistry.sol";
 import {AssetConfig} from "./AssetConfig.sol";
 import {LiabilityLedger} from "./LiabilityLedger.sol";
@@ -14,7 +15,7 @@ interface IExitRightFlag {
 }
 
 /// @title SolvencyOracle
-contract SolvencyOracle {
+contract SolvencyOracle is Ownable {
     CustodianRegistry public immutable registry;
     AssetConfig public immutable assetConfig;
     LiabilityLedger public immutable ledger;
@@ -25,14 +26,16 @@ contract SolvencyOracle {
     event ExitRightSet(address exitRight);
 
     error ExitRightAlreadySet();
+    error ZeroAddress();
 
     constructor(
         CustodianRegistry registry_,
         AssetConfig assetConfig_,
         LiabilityLedger ledger_,
         ReserveSampler sampler_,
-        DisputeModule disputes_
-    ) {
+        DisputeModule disputes_,
+        address initialOwner
+    ) Ownable(initialOwner) {
         registry = registry_;
         assetConfig = assetConfig_;
         ledger = ledger_;
@@ -40,7 +43,8 @@ contract SolvencyOracle {
         disputes = disputes_;
     }
 
-    function setExitRight(address exitRight_) external {
+    function setExitRight(address exitRight_) external onlyOwner {
+        if (exitRight_ == address(0)) revert ZeroAddress();
         if (address(exitRight) != address(0)) revert ExitRightAlreadySet();
         exitRight = IExitRightFlag(exitRight_);
         emit ExitRightSet(exitRight_);
@@ -84,13 +88,16 @@ contract SolvencyOracle {
         }
 
         if (cfg.isStockToken) {
-            uint256 liveMul = IERC8056(cfg.token).uiMultiplier();
-            if (liveMul != ep.multiplierSnapshot) {
-                return RPTypes.SolvencyStatus(false, epochId, ep.committedAt, RPTypes.REASON_MULTIPLIER_DRIFT);
-            }
-            uint256 pendingAt = IERC8056(cfg.token).effectiveAt();
-            uint256 newMul = IERC8056(cfg.token).newUIMultiplier();
-            if (pendingAt > block.timestamp && newMul != 0 && newMul != liveMul) {
+            try IERC8056(cfg.token).uiMultiplier() returns (uint256 liveMul) {
+                if (liveMul != ep.multiplierSnapshot) {
+                    return RPTypes.SolvencyStatus(false, epochId, ep.committedAt, RPTypes.REASON_MULTIPLIER_DRIFT);
+                }
+                uint256 pendingAt = IERC8056(cfg.token).effectiveAt();
+                uint256 newMul = IERC8056(cfg.token).newUIMultiplier();
+                if (pendingAt > block.timestamp && newMul != 0 && newMul != liveMul) {
+                    return RPTypes.SolvencyStatus(false, epochId, ep.committedAt, RPTypes.REASON_MULTIPLIER_DRIFT);
+                }
+            } catch {
                 return RPTypes.SolvencyStatus(false, epochId, ep.committedAt, RPTypes.REASON_MULTIPLIER_DRIFT);
             }
         }
@@ -101,7 +108,12 @@ contract SolvencyOracle {
                 RPTypes.SolvencyStatus(false, epochId, ep.committedAt, RPTypes.REASON_INSUFFICIENT_SAMPLES);
         }
 
-        uint256 live = sampler.liveReserves(custodianId, asset);
+        uint256 live;
+        try sampler.liveReserves(custodianId, asset) returns (uint256 live_) {
+            live = live_;
+        } catch {
+            return RPTypes.SolvencyStatus(false, epochId, ep.committedAt, RPTypes.REASON_LIVE_SHORT);
+        }
         uint256 effective = sampleMinimum < live ? sampleMinimum : live;
         uint256 need = (ep.allocation * uint256(cfg.coverageFloorBps)) / 10_000;
 

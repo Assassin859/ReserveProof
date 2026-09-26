@@ -71,11 +71,11 @@ describe("ReserveProof oracle basics", function () {
   });
 
   it("fails closed when stale", async function () {
-    const f = await deployFixture({ maxOracleAge: 100 });
+    const f = await deployFixture({ maxOracleAge: 3600 });
     const leaves = twoLeaves(f.userA.address, f.userB.address);
     const { asset } = await commitAndSample(f, leaves);
 
-    await ethers.provider.send("evm_increaseTime", [101]);
+    await ethers.provider.send("evm_increaseTime", [3601]);
     await ethers.provider.send("evm_mine", []);
 
     const status = await f.oracle.status(f.custodianId, asset);
@@ -91,7 +91,7 @@ describe("ReserveProof oracle basics", function () {
 
     await f.ledger
       .connect(f.operator)
-      .commitEpoch(f.custodianId, asset, 1, root, total, total, ethers.parseEther("1"), 0);
+      .commitEpoch(f.custodianId, asset, 1, root, total, [f.chainId], [total], ethers.parseEther("1"), 0);
     await f.sampler.connect(f.operator).setSampleWallets(f.custodianId, asset, [f.wallet1.address]);
     await f.sampler.connect(f.operator).recordSample(f.custodianId, asset);
     await ethers.provider.send("evm_increaseTime", [2]);
