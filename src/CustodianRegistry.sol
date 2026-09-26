@@ -39,6 +39,7 @@ contract CustodianRegistry is Ownable {
     error BadOwnershipProof();
     error NotReserveWallet();
     error RemovalNotReady();
+    error WrongChain();
 
     constructor(address initialOwner) Ownable(initialOwner) {}
 
@@ -65,12 +66,14 @@ contract CustodianRegistry is Ownable {
         bytes calldata ownershipProof
     ) external onlyOperator(id) {
         if (!custodians[id].active) revert Inactive();
+        if (chainId != uint64(block.chainid)) revert WrongChain();
         if (walletOwner[chainId][wallet] != bytes32(0)) revert WalletTaken();
 
+        // Digest binds custodian, chain (must match execution chain), wallet, and registry.
         bytes32 digest = keccak256(
             abi.encodePacked(
                 "\x19Ethereum Signed Message:\n32",
-                keccak256(abi.encode(id, chainId, wallet, address(this)))
+                keccak256(abi.encode(id, chainId, block.chainid, wallet, address(this)))
             )
         );
         address signer = ECDSA.recover(digest, ownershipProof);

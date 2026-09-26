@@ -92,8 +92,18 @@ contract SolvencyOracle is Ownable {
                 if (liveMul != ep.multiplierSnapshot) {
                     return RPTypes.SolvencyStatus(false, epochId, ep.committedAt, RPTypes.REASON_MULTIPLIER_DRIFT);
                 }
-                uint256 pendingAt = IERC8056(cfg.token).effectiveAt();
-                uint256 newMul = IERC8056(cfg.token).newUIMultiplier();
+                uint256 pendingAt;
+                uint256 newMul;
+                try IERC8056(cfg.token).effectiveAt() returns (uint256 at_) {
+                    pendingAt = at_;
+                } catch {
+                    return RPTypes.SolvencyStatus(false, epochId, ep.committedAt, RPTypes.REASON_MULTIPLIER_DRIFT);
+                }
+                try IERC8056(cfg.token).newUIMultiplier() returns (uint256 mul_) {
+                    newMul = mul_;
+                } catch {
+                    return RPTypes.SolvencyStatus(false, epochId, ep.committedAt, RPTypes.REASON_MULTIPLIER_DRIFT);
+                }
                 if (pendingAt > block.timestamp && newMul != 0 && newMul != liveMul) {
                     return RPTypes.SolvencyStatus(false, epochId, ep.committedAt, RPTypes.REASON_MULTIPLIER_DRIFT);
                 }

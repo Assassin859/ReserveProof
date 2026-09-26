@@ -59,12 +59,12 @@ npm run demo:web          # http://localhost:3000
 
 | Item | Link |
 |---|---|
-| Robinhood testnet explorer — CustodianRegistry | _TODO_ |
+| Robinhood testnet explorer — CustodianRegistry | _TODO — awaiting funded `deploy:rh` (deployer currently 0 balance)_ |
 | Robinhood — SolvencyOracle | _TODO_ |
-| Arbitrum Sepolia — allocation twin | _TODO_ |
+| Arbitrum Sepolia — allocation twin | _TODO — awaiting funded `deploy:arb`_ |
 | Verified contract URLs | _TODO_ — see VERIFY.md checklist |
 | Demo video | _TODO_ |
-| Repo | _this repo_ |
+| Repo | https://github.com/Assassin859/ReserveProof |
 
 ## Residual risks (one-liner for judges)
 

@@ -14,7 +14,20 @@ const REMOVAL_DELAY = 3600;
 const CUSTODIAN_NAME = process.env.CUSTODIAN_NAME || "kopi";
 
 async function main() {
-  const [deployer, reserveWallet] = await ethers.getSigners();
+  const signers = await ethers.getSigners();
+  const deployer = signers[0];
+  let reserveWallet = signers[1];
+  // Single-key testnets: derive an ephemeral reserve wallet and fund it.
+  if (!reserveWallet) {
+    const funded = ethers.Wallet.createRandom().connect(ethers.provider);
+    const fundTx = await deployer.sendTransaction({
+      to: funded.address,
+      value: ethers.parseEther("0.005"),
+    });
+    await fundTx.wait();
+    reserveWallet = funded as typeof deployer;
+    console.log(`Ephemeral reserve wallet funded: ${reserveWallet.address}`);
+  }
   const network = await ethers.provider.getNetwork();
   const networkName = hre.network.name;
   const chainId = Number(network.chainId);
@@ -103,11 +116,11 @@ async function main() {
   await (await registry.registerCustodian(custodianId, deployer.address, REMOVAL_DELAY)).wait();
   console.log(`Custodian registered: ${CUSTODIAN_NAME} → ${custodianId}`);
 
-  // Ownership proof: keccak(custodianId, chainId, wallet, registry) signed by wallet
+  // Ownership proof: keccak(custodianId, chainId, block.chainid, wallet, registry)
   const msgHash = ethers.keccak256(
     ethers.AbiCoder.defaultAbiCoder().encode(
-      ["bytes32", "uint64", "address", "address"],
-      [custodianId, chainId, reserveWallet.address, await registry.getAddress()]
+      ["bytes32", "uint64", "uint256", "address", "address"],
+      [custodianId, chainId, network.chainId, reserveWallet.address, await registry.getAddress()]
     )
   );
   const sig = await reserveWallet.signMessage(ethers.getBytes(msgHash));
@@ -118,6 +131,12 @@ async function main() {
   const seedAmount = ethers.parseEther("1000");
   await (await stock.mint(reserveWallet.address, seedAmount)).wait();
   console.log(`Minted ${ethers.formatEther(seedAmount)} mTSLA to reserve wallet`);
+
+  // Dual-chain USDG allowlist when on RH / Arb Sepolia; else local-only.
+  const dualChains = [46630, 421614];
+  const usdgAllocChains =
+    chainId === 46630 || chainId === 421614 ? dualChains : [chainId];
+  const stockAllocChains = [chainId];
 
   await (
     await assetConfig.setAssetConfig(
@@ -130,7 +149,8 @@ async function main() {
       10300,
       7 * 24 * 3600,
       2,
-      60
+      60,
+      stockAllocChains
     )
   ).wait();
   console.log("AssetConfig: mock stock configured");
@@ -146,7 +166,8 @@ async function main() {
       10300,
       7 * 24 * 3600,
       2,
-      60
+      60,
+      usdgAllocChains
     )
   ).wait();
   console.log("AssetConfig: USDG configured");

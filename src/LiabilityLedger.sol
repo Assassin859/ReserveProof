@@ -36,8 +36,8 @@ contract LiabilityLedger {
         assetConfig = assetConfig_;
     }
 
-    /// @notice Commit an epoch. `allocationChainIds` / `allocations` must cover every chain slice
-    ///         and sum exactly to `totalLiability`. Local `allocation` is the entry for this chain.
+    /// @notice Commit an epoch. Allocation vector chain IDs must be on the asset allowlist
+    ///         and sum exactly to `totalLiability`.
     function commitEpoch(
         bytes32 custodianId,
         address asset,
@@ -58,7 +58,7 @@ contract LiabilityLedger {
         if (epochId == 0 || epochId <= latestEpochId[custodianId][asset]) revert BadEpoch();
         if (unitMode != cfg.unitMode) revert BadEpoch();
 
-        uint256 allocation = _localAllocation(cfg.chainId, totalLiability, allocationChainIds, allocations);
+        uint256 allocation = _localAllocation(custodianId, asset, cfg.chainId, totalLiability, allocationChainIds, allocations);
 
         if (cfg.isStockToken) {
             uint256 liveMul = IERC8056(cfg.token).uiMultiplier();
@@ -98,11 +98,13 @@ contract LiabilityLedger {
     }
 
     function _localAllocation(
+        bytes32 custodianId,
+        address asset,
         uint64 localChainId,
         uint256 totalLiability,
         uint64[] calldata allocationChainIds,
         uint256[] calldata allocations
-    ) internal pure returns (uint256 local) {
+    ) internal view returns (uint256 local) {
         if (allocationChainIds.length == 0 || allocationChainIds.length != allocations.length) {
             revert BadAllocation();
         }
@@ -110,7 +112,9 @@ contract LiabilityLedger {
         bool found;
         for (uint256 i = 0; i < allocations.length; i++) {
             if (allocations[i] == 0) revert BadAllocation();
-            // Reject duplicate chain ids.
+            if (!assetConfig.isAllocationChain(custodianId, asset, allocationChainIds[i])) {
+                revert BadAllocation();
+            }
             for (uint256 j = 0; j < i; j++) {
                 if (allocationChainIds[j] == allocationChainIds[i]) revert BadAllocation();
             }

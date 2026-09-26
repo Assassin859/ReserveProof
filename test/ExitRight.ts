@@ -8,16 +8,16 @@ describe("ExitRight", function () {
     const leaves = twoLeaves(f.userA.address, f.userB.address);
     const { proofs, asset } = await commitAndSample(f, leaves);
 
-    await f.exitRight.connect(f.operator).setBondConfig(
-      f.custodianId,
-      3600, // delay
-      1_000_000n, // maxBondPerClaim (1 USDG with 6 decimals)
-      10_000_000n
-    );
+    // postBond before setBondConfig (cap must be <= balance)
     await f.usdg.connect(f.operator).approve(await f.exitRight.getAddress(), 10_000_000n);
     await f.exitRight.connect(f.operator).postBond(f.custodianId, 5_000_000n);
+    await f.exitRight.connect(f.operator).setBondConfig(
+      f.custodianId,
+      3600,
+      1_000_000n,
+      10_000_000n
+    );
 
-    // Mint stock to operator for settle
     await f.stock.mint(f.operator.address, ethers.parseEther("1000"));
 
     return { f, proofs, asset };
@@ -29,8 +29,7 @@ describe("ExitRight", function () {
     const proof = proofs.get(f.userA.address.toLowerCase())!;
 
     const before = await f.stock.balanceOf(f.userA.address);
-    const tx = await f.exitRight.connect(f.userA).openClaim(f.custodianId, asset, amount, proof);
-    const receipt = await tx.wait();
+    await f.exitRight.connect(f.userA).openClaim(f.custodianId, asset, amount, proof);
     const claimId = 0n;
 
     await f.stock.connect(f.operator).approve(await f.exitRight.getAddress(), amount);
@@ -40,7 +39,6 @@ describe("ExitRight", function () {
     expect(await f.exitRight.hasExitDefault(f.custodianId, asset)).to.equal(false);
     const [ok] = await f.oracle.isSolvent(f.custodianId, asset);
     expect(ok).to.equal(true);
-    void receipt;
   });
 
   it("slash after deadline sets exit default and insolvency", async function () {

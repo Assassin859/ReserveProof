@@ -31,7 +31,6 @@ contract DisputeModule is EIP712 {
 
     mapping(bytes32 => mapping(address => Dispute)) public disputes;
     mapping(bytes32 => mapping(address => bool)) public isDisputed;
-    /// @dev Prevents replaying the same signed balance statement after a dispute is cleared.
     mapping(bytes32 => bool) public usedStatements;
 
     event DisputeOpened(bytes32 indexed custodianId, address indexed asset, address user, uint64 epochId);
@@ -118,8 +117,6 @@ contract DisputeModule is EIP712 {
         RPTypes.Epoch memory ep = ledger.getEpoch(custodianId, asset, epochId);
         if (!ep.exists) revert BadProof();
 
-        bytes32 leftLeaf;
-        bytes32 rightLeaf;
         if (leftUser != address(0)) {
             if (
                 !MerkleSumVerifier.verifyInclusion(
@@ -133,7 +130,6 @@ contract DisputeModule is EIP712 {
                     leftSiblings
                 )
             ) revert BadProof();
-            leftLeaf = MerkleSumVerifier.leafHash(custodianId, asset, epochId, leftUser, leftAmount);
         }
         if (rightUser != address(0)) {
             if (
@@ -148,22 +144,17 @@ contract DisputeModule is EIP712 {
                     rightSiblings
                 )
             ) revert BadProof();
-            rightLeaf = MerkleSumVerifier.leafHash(custodianId, asset, epochId, rightUser, rightAmount);
         }
 
-        // Interior omissions must use adjacent sibling neighbours.
-        if (leftUser != address(0) && rightUser != address(0)) {
-            if (
-                !MerkleSumVerifier.verifyAdjacentSiblings(
-                    leftLeaf,
-                    leftAmount,
-                    leftSiblings,
-                    rightLeaf,
-                    rightAmount,
-                    rightSiblings
-                )
-            ) revert BadBounds();
-        }
+        // Always enforce index-based adjacency (edges + interior).
+        if (
+            !MerkleSumVerifier.verifyOmissionAdjacency(
+                leftUser,
+                leftSiblings,
+                rightUser,
+                rightSiblings
+            )
+        ) revert BadBounds();
 
         usedStatements[stmtHash] = true;
         _open(custodianId, asset, user, epochId, statedAmount);

@@ -79,6 +79,20 @@ library MerkleSumVerifier {
         return computed == root && computedSum == totalSum;
     }
 
+    /// @notice Recover leaf index from inclusion proof path bits.
+    /// @dev `isLeft == true` means sibling is on the left ⇒ current node is right child ⇒ bit 1.
+    function leafIndexFromProof(ProofNode[] memory siblings) internal pure returns (uint256 index) {
+        for (uint256 i = 0; i < siblings.length; i++) {
+            if (siblings[i].isLeft) {
+                index |= (uint256(1) << i);
+            }
+        }
+    }
+
+    function leafCountFromProof(ProofNode[] memory siblings) internal pure returns (uint256) {
+        return uint256(1) << siblings.length;
+    }
+
     /// @notice Verify that `missing` sorts strictly between leftUser and rightUser.
     function verifyOmissionBounds(
         address missing,
@@ -91,30 +105,33 @@ library MerkleSumVerifier {
         return true;
     }
 
-    /// @notice True if left and right leaves are direct siblings under the tree
-    ///         (required for interior omission so a present user cannot fake a gap).
-    function verifyAdjacentSiblings(
-        bytes32 leftLeaf,
-        uint256 leftAmount,
+    /// @notice Index-based adjacency for omission neighbours (works across subtree boundaries).
+    /// @dev Interior requires both neighbours with |leftIdx - rightIdx| == 1.
+    ///      Left edge: leftUser == 0 and rightIdx == 0.
+    ///      Right edge: rightUser == 0 and leftIdx == leafCount - 1.
+    function verifyOmissionAdjacency(
+        address leftUser,
         ProofNode[] memory leftSiblings,
-        bytes32 rightLeaf,
-        uint256 rightAmount,
+        address rightUser,
         ProofNode[] memory rightSiblings
     ) internal pure returns (bool) {
-        if (leftSiblings.length == 0 || leftSiblings.length != rightSiblings.length) return false;
-        ProofNode memory ls0 = leftSiblings[0];
-        ProofNode memory rs0 = rightSiblings[0];
-        // Left child sees right sibling (isLeft=false); right child sees left sibling (isLeft=true).
-        if (ls0.isLeft || !rs0.isLeft) return false;
-        if (ls0.hash != rightLeaf || ls0.sum != rightAmount) return false;
-        if (rs0.hash != leftLeaf || rs0.sum != leftAmount) return false;
-        for (uint256 i = 1; i < leftSiblings.length; i++) {
-            if (
-                leftSiblings[i].hash != rightSiblings[i].hash ||
-                leftSiblings[i].sum != rightSiblings[i].sum ||
-                leftSiblings[i].isLeft != rightSiblings[i].isLeft
-            ) return false;
+        if (leftUser == address(0) && rightUser == address(0)) return false;
+
+        if (leftUser != address(0) && rightUser != address(0)) {
+            if (leftSiblings.length == 0 || leftSiblings.length != rightSiblings.length) return false;
+            uint256 leftIdx = leafIndexFromProof(leftSiblings);
+            uint256 rightIdx = leafIndexFromProof(rightSiblings);
+            return rightIdx == leftIdx + 1;
         }
-        return true;
+
+        if (leftUser == address(0)) {
+            if (rightSiblings.length == 0) return false;
+            return leafIndexFromProof(rightSiblings) == 0;
+        }
+
+        // rightUser == 0
+        if (leftSiblings.length == 0) return false;
+        uint256 leafCount = leafCountFromProof(leftSiblings);
+        return leafIndexFromProof(leftSiblings) == leafCount - 1;
     }
 }

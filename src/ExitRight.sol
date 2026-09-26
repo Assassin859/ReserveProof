@@ -2,18 +2,21 @@
 pragma solidity ^0.8.24;
 
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {CustodianRegistry} from "./CustodianRegistry.sol";
 import {LiabilityLedger} from "./LiabilityLedger.sol";
 import {MerkleSumVerifier} from "./libraries/MerkleSumVerifier.sol";
 import {RPTypes} from "./libraries/RPTypes.sol";
-import {IERC20Minimal} from "./interfaces/IToken.sol";
 
 /// @title ExitRight
 /// @notice Bonded withdrawal claims against the latest epoch; payout via settle() only (same asset).
 contract ExitRight is ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
     CustodianRegistry public immutable registry;
     LiabilityLedger public immutable ledger;
-    IERC20Minimal public immutable bondToken; // USDG
+    IERC20 public immutable bondToken; // USDG
 
     struct BondConfig {
         uint256 bondAmount;
@@ -58,15 +61,16 @@ contract ExitRight is ReentrancyGuard {
     error BondCap();
     error NotOpen();
     error TooEarly();
-    error TransferFailed();
     error WrongCustodian();
 
     constructor(CustodianRegistry registry_, LiabilityLedger ledger_, address bondToken_) {
         registry = registry_;
         ledger = ledger_;
-        bondToken = IERC20Minimal(bondToken_);
+        bondToken = IERC20(bondToken_);
     }
 
+    /// @notice Configure bond caps. `maxBondPerClaim` must be <= posted bond balance
+    ///         (call `postBond` first) and <= `maxBondTotalInFlight`.
     function setBondConfig(
         bytes32 custodianId,
         uint64 maxPayoutDelay,
@@ -76,7 +80,8 @@ contract ExitRight is ReentrancyGuard {
         (address op, , ) = registry.custodians(custodianId);
         if (msg.sender != op) revert NotOperator();
         if (maxPayoutDelay == 0 || maxBondPerClaim == 0) revert BadConfig();
-        // Do not allow shrinking per-claim cap while bond is in flight (open claims use frozen reserved).
+        if (maxBondPerClaim > maxBondTotalInFlight) revert BadConfig();
+        if (maxBondPerClaim > bondBalance[custodianId]) revert BadConfig();
         BondConfig memory prev = bondConfigs[custodianId];
         if (prev.set && bondInFlight[custodianId] > 0 && maxBondPerClaim < prev.maxBondPerClaim) {
             revert BadConfig();
@@ -94,7 +99,7 @@ contract ExitRight is ReentrancyGuard {
     function postBond(bytes32 custodianId, uint256 amount) external nonReentrant {
         (address op, , ) = registry.custodians(custodianId);
         if (msg.sender != op) revert NotOperator();
-        if (!bondToken.transferFrom(msg.sender, address(this), amount)) revert TransferFailed();
+        bondToken.safeTransferFrom(msg.sender, address(this), amount);
         bondBalance[custodianId] += amount;
         bondConfigs[custodianId].bondAmount = bondBalance[custodianId];
         emit BondPosted(custodianId, amount);
@@ -150,7 +155,6 @@ contract ExitRight is ReentrancyGuard {
         emit ClaimOpened(claimId, custodianId, msg.sender, asset, amount);
     }
 
-    /// @notice Custodian pays the claim asset to the user through this contract.
     function settle(bytes32 custodianId, uint256 claimId) external nonReentrant {
         (address op, , ) = registry.custodians(custodianId);
         if (msg.sender != op) revert NotOperator();
@@ -158,8 +162,7 @@ contract ExitRight is ReentrancyGuard {
         if (!c.open || c.settled || c.slashed) revert NotOpen();
         if (c.custodianId != custodianId) revert WrongCustodian();
 
-        IERC20Minimal token = IERC20Minimal(c.asset);
-        if (!token.transferFrom(msg.sender, c.user, c.amount)) revert TransferFailed();
+        IERC20(c.asset).safeTransferFrom(msg.sender, c.user, c.amount);
 
         c.open = false;
         c.settled = true;
@@ -188,7 +191,7 @@ contract ExitRight is ReentrancyGuard {
             bondInFlight[custodianId] = 0;
         }
         if (pay > 0) {
-            if (!bondToken.transfer(c.user, pay)) revert TransferFailed();
+            bondToken.safeTransfer(c.user, pay);
         }
         emit ClaimSlashed(claimId, pay);
     }

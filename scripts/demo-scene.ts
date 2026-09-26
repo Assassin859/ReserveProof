@@ -124,11 +124,12 @@ async function main() {
     console.log(`Dispute opened → ok=${status.ok} reason=${status.reason} (expect 3 DISPUTED)`);
   } else if (scene === 1) {
     // Show WalletTaken on duplicate add
-    const chainId = Number((await ethers.provider.getNetwork()).chainId);
+    const network = await ethers.provider.getNetwork();
+    const chainId = Number(network.chainId);
     const msgHash = ethers.keccak256(
       ethers.AbiCoder.defaultAbiCoder().encode(
-        ["bytes32", "uint64", "address", "address"],
-        [custodianId, chainId, reserveWallet.address, await registry.getAddress()]
+        ["bytes32", "uint64", "uint256", "address", "address"],
+        [custodianId, chainId, network.chainId, reserveWallet.address, await registry.getAddress()]
       )
     );
     const sig = await reserveWallet.signMessage(ethers.getBytes(msgHash));

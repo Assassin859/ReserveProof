@@ -1,7 +1,11 @@
 import { ethers } from "hardhat";
 import { buildSortedTree, type Leaf, type ProofNode } from "./merkle";
 
-export async function deployFixture(opts?: { maxOracleAge?: number; minSamples?: number }) {
+export async function deployFixture(opts?: {
+  maxOracleAge?: number;
+  minSamples?: number;
+  allocationChains?: number[];
+}) {
   const maxOracleAge = opts?.maxOracleAge ?? 7 * 24 * 3600;
   const minSamples = opts?.minSamples ?? 2;
 
@@ -55,10 +59,12 @@ export async function deployFixture(opts?: { maxOracleAge?: number; minSamples?:
 
   const network = await ethers.provider.getNetwork();
   const chainId = Number(network.chainId);
+  const allocationChains = opts?.allocationChains ?? [chainId];
+
   const msgHash = ethers.keccak256(
     ethers.AbiCoder.defaultAbiCoder().encode(
-      ["bytes32", "uint64", "address", "address"],
-      [custodianId, chainId, wallet1.address, await registry.getAddress()]
+      ["bytes32", "uint64", "uint256", "address", "address"],
+      [custodianId, chainId, network.chainId, wallet1.address, await registry.getAddress()]
     )
   );
   const sig = await wallet1.signMessage(ethers.getBytes(msgHash));
@@ -74,7 +80,8 @@ export async function deployFixture(opts?: { maxOracleAge?: number; minSamples?:
     10300,
     maxOracleAge,
     minSamples,
-    1
+    1,
+    allocationChains
   );
 
   await stock.mint(wallet1.address, ethers.parseEther("1000"));
