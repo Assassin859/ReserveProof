@@ -163,6 +163,67 @@ contract DisputeModule is EIP712 {
         _open(custodianId, asset, user, epochId, statedAmount);
     }
 
+    /// @notice Dispute a lopsided tree: inclusion succeeds at non-committed depth.
+    function openMalformedTreeDispute(
+        bytes32 custodianId,
+        address asset,
+        uint64 epochId,
+        address user,
+        uint256 amount,
+        MerkleSumVerifier.ProofNode[] calldata siblings
+    ) external {
+        if (isDisputed[custodianId][asset]) revert AlreadyDisputed();
+        RPTypes.Epoch memory ep = ledger.getEpoch(custodianId, asset, epochId);
+        if (!ep.exists) revert BadProof();
+
+        uint8 expectedDepth = MerkleSumVerifier.treeDepthFromLeafCount(ep.leafCount);
+        if (siblings.length == expectedDepth) revert BadProof();
+
+        if (
+            !MerkleSumVerifier.verifyInclusionAnyDepth(
+                custodianId,
+                asset,
+                epochId,
+                user,
+                amount,
+                ep.liabilityRoot,
+                ep.totalLiability,
+                ep.leafCount,
+                siblings
+            )
+        ) revert BadProof();
+
+        _open(custodianId, asset, user, epochId, amount);
+    }
+
+    /// @notice Dispute when operator signed a different EpochCommitment for the same epoch.
+    function openEquivocationDispute(
+        bytes32 custodianId,
+        address asset,
+        uint64 epochId,
+        bytes32 otherRoot,
+        uint256 otherTotal,
+        bytes32 otherAllocCommitment,
+        uint32 otherLeafCount,
+        bytes calldata otherSig
+    ) external {
+        if (isDisputed[custodianId][asset]) revert AlreadyDisputed();
+        RPTypes.Epoch memory ep = ledger.getEpoch(custodianId, asset, epochId);
+        if (!ep.exists) revert BadProof();
+
+        bool differs = otherRoot != ep.liabilityRoot || otherTotal != ep.totalLiability
+            || otherAllocCommitment != ep.allocationCommitment || otherLeafCount != ep.leafCount;
+        if (!differs) revert BadProof();
+
+        bytes32 otherDigest = ledger.commitmentDigest(
+            custodianId, asset, epochId, otherRoot, otherTotal, otherAllocCommitment, otherLeafCount
+        );
+        (address op, , ) = registry.custodians(custodianId);
+        if (ECDSA.recover(otherDigest, otherSig) != op) revert BadSignature();
+
+        _open(custodianId, asset, msg.sender, epochId, 0);
+    }
+
     function markMatchingEpoch(
         bytes32 custodianId,
         address asset,

@@ -2,21 +2,22 @@
 pragma solidity ^0.8.24;
 
 /// @title MerkleSumVerifier
-/// @notice Sorted Merkle-sum tree with domain prefixes 0x00 (leaf) / 0x01 (node).
+/// @notice Sorted Merkle-sum tree; leafCount is bound into every leaf (DOMAIN v2).
 library MerkleSumVerifier {
     bytes32 internal constant DOMAIN =
-        keccak256("ReserveProof.MerkleSum.v1");
+        keccak256("ReserveProof.MerkleSum.v2");
 
     struct ProofNode {
         bytes32 hash;
         uint256 sum;
-        bool isLeft; // sibling is on the left of the computed node
+        bool isLeft;
     }
 
     function leafHash(
         bytes32 custodianId,
         address asset,
         uint64 epochId,
+        uint32 leafCount,
         address user,
         uint256 amount
     ) internal pure returns (bytes32) {
@@ -28,6 +29,7 @@ library MerkleSumVerifier {
                     custodianId,
                     asset,
                     epochId,
+                    leafCount,
                     user,
                     amount
                 )
@@ -62,7 +64,29 @@ library MerkleSumVerifier {
         return d;
     }
 
-    /// @notice Verify inclusion; proof length must equal committed tree depth.
+    function _walk(
+        bytes32 custodianId,
+        address asset,
+        uint64 epochId,
+        uint32 leafCount,
+        address user,
+        uint256 amount,
+        ProofNode[] memory siblings
+    ) private pure returns (bytes32 computed, uint256 computedSum) {
+        computed = leafHash(custodianId, asset, epochId, leafCount, user, amount);
+        computedSum = amount;
+        for (uint256 i = 0; i < siblings.length; i++) {
+            ProofNode memory s = siblings[i];
+            if (s.isLeft) {
+                computed = nodeHash(s.hash, s.sum, computed, computedSum);
+            } else {
+                computed = nodeHash(computed, computedSum, s.hash, s.sum);
+            }
+            computedSum += s.sum;
+        }
+    }
+
+    /// @notice Strict inclusion: proof length must equal committed tree depth.
     function verifyInclusion(
         bytes32 custodianId,
         address asset,
@@ -76,20 +100,27 @@ library MerkleSumVerifier {
     ) internal pure returns (bool) {
         if (leafCount < 2 || (leafCount & (leafCount - 1)) != 0) return false;
         if (siblings.length != treeDepthFromLeafCount(leafCount)) return false;
+        (bytes32 computed, uint256 computedSum) =
+            _walk(custodianId, asset, epochId, leafCount, user, amount, siblings);
+        return computed == root && computedSum == totalSum;
+    }
 
-        bytes32 computed = leafHash(custodianId, asset, epochId, user, amount);
-        uint256 computedSum = amount;
-
-        for (uint256 i = 0; i < siblings.length; i++) {
-            ProofNode memory s = siblings[i];
-            if (s.isLeft) {
-                computed = nodeHash(s.hash, s.sum, computed, computedSum);
-            } else {
-                computed = nodeHash(computed, computedSum, s.hash, s.sum);
-            }
-            computedSum += s.sum;
-        }
-
+    /// @notice Inclusion without depth check (for malformed-tree disputes).
+    function verifyInclusionAnyDepth(
+        bytes32 custodianId,
+        address asset,
+        uint64 epochId,
+        address user,
+        uint256 amount,
+        bytes32 root,
+        uint256 totalSum,
+        uint32 leafCount,
+        ProofNode[] memory siblings
+    ) internal pure returns (bool) {
+        if (leafCount < 2 || (leafCount & (leafCount - 1)) != 0) return false;
+        if (siblings.length == 0) return false;
+        (bytes32 computed, uint256 computedSum) =
+            _walk(custodianId, asset, epochId, leafCount, user, amount, siblings);
         return computed == root && computedSum == totalSum;
     }
 
@@ -112,7 +143,6 @@ library MerkleSumVerifier {
         return true;
     }
 
-    /// @notice Index-based adjacency using committed leafCount (not proof-derived).
     function verifyOmissionAdjacency(
         address leftUser,
         ProofNode[] memory leftSiblings,
@@ -134,12 +164,10 @@ library MerkleSumVerifier {
 
         if (leftUser == address(0)) {
             if (rightSiblings.length != depth) return false;
-            uint256 rightIdx = leafIndexFromProof(rightSiblings);
-            return rightIdx == 0;
+            return leafIndexFromProof(rightSiblings) == 0;
         }
 
         if (leftSiblings.length != depth) return false;
-        uint256 leftIdx = leafIndexFromProof(leftSiblings);
-        return leftIdx == uint256(leafCount) - 1;
+        return leafIndexFromProof(leftSiblings) == uint256(leafCount) - 1;
     }
 }

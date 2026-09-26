@@ -1,7 +1,13 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { buildSortedTree } from "./helpers/merkle";
-import { commitAndSample, deployFixture, twoLeaves } from "./helpers/fixture";
+import {
+  allocationCommitment,
+  commitAndSample,
+  deployFixture,
+  signEpochCommitment,
+  twoLeaves,
+} from "./helpers/fixture";
 
 describe("ReserveProof oracle basics", function () {
   it("is solvent when samples + live cover allocation", async function () {
@@ -87,17 +93,39 @@ describe("ReserveProof oracle basics", function () {
     const f = await deployFixture({ minSamples: 3 });
     const asset = await f.stock.getAddress();
     const leaves = twoLeaves(f.userA.address, f.userB.address);
-    const { root, total } = buildSortedTree(f.custodianId, asset, 1, leaves);
+    const { root, total, leafCount } = buildSortedTree(f.custodianId, asset, 1, leaves);
+    const allocCmt = allocationCommitment([f.chainId], [total]);
+    const sig = await signEpochCommitment(
+      f.operator,
+      f.custodianId,
+      asset,
+      1,
+      root,
+      total,
+      allocCmt,
+      leafCount
+    );
 
     await f.ledger
       .connect(f.operator)
-      .commitEpoch(f.custodianId, asset, 1, root, total, [f.chainId], [total], ethers.parseEther("1"), 0, 2);
+      .commitEpoch(
+        f.custodianId,
+        asset,
+        1,
+        root,
+        total,
+        [f.chainId],
+        [total],
+        ethers.parseEther("1"),
+        0,
+        leafCount,
+        sig
+      );
     await f.sampler.connect(f.operator).setSampleWallets(f.custodianId, asset, [f.wallet1.address]);
     await f.sampler.connect(f.operator).recordSample(f.custodianId, asset);
     await ethers.provider.send("evm_increaseTime", [2]);
     await ethers.provider.send("evm_mine", []);
     await f.sampler.connect(f.operator).recordSample(f.custodianId, asset);
-    // only 2 of 3 samples
 
     const status = await f.oracle.status(f.custodianId, asset);
     expect(status.ok).to.equal(false);

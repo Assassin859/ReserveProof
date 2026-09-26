@@ -3,8 +3,9 @@
  *
  * Env:
  *   ROOT_JSON, DEPLOYMENT, UNIT_MODE
- *   ALLOCATIONS=comma-separated amounts matching allowlist order (optional;
- *               default puts full total on home chain and 0 is invalid — equal split)
+ *   ALLOCATIONS=comma-separated amounts matching allowlist order
+ *     - required when allowlist length > 1
+ *     - if unset and allowlist length is 1, puts full total on home chain
  */
 import hre from "hardhat";
 import { ethers } from "hardhat";
@@ -14,6 +15,25 @@ import * as path from "path";
 function loadJson(p: string) {
   return JSON.parse(fs.readFileSync(p, "utf8"));
 }
+
+const EPOCH_COMMITMENT_DOMAIN = {
+  name: "ReserveProof",
+  version: "1",
+  chainId: 0,
+  verifyingContract: ethers.ZeroAddress,
+};
+
+const EPOCH_COMMITMENT_TYPES = {
+  EpochCommitment: [
+    { name: "custodianId", type: "bytes32" },
+    { name: "asset", type: "address" },
+    { name: "epochId", type: "uint64" },
+    { name: "liabilityRoot", type: "bytes32" },
+    { name: "totalLiability", type: "uint256" },
+    { name: "allocationCommitment", type: "bytes32" },
+    { name: "leafCount", type: "uint32" },
+  ],
+};
 
 async function main() {
   const rootPath = path.resolve(process.env.ROOT_JSON || "out/root.json");
@@ -51,17 +71,31 @@ async function main() {
   let allocations: bigint[];
   if (process.env.ALLOCATIONS) {
     allocations = process.env.ALLOCATIONS.split(",").map((s) => BigInt(s.trim()));
+  } else if (chains.length === 1) {
+    allocations = [totalLiability];
   } else {
-    const n = chains.length;
-    const base = totalLiability / BigInt(n);
-    allocations = [];
-    let sum = 0n;
-    for (let i = 0; i < n; i++) {
-      const a = i === n - 1 ? totalLiability - sum : base;
-      allocations.push(a);
-      sum += a;
-    }
+    throw new Error(
+      `ALLOCATIONS required for multi-chain allowlist (${chains.length} chains). ` +
+        `Example: ALLOCATIONS=${chains.map(() => "…").join(",")}`
+    );
   }
+  if (allocations.length !== chains.length) {
+    throw new Error(`ALLOCATIONS length ${allocations.length} != allowlist ${chains.length}`);
+  }
+
+  const allocCommitment = ethers.keccak256(
+    ethers.AbiCoder.defaultAbiCoder().encode(["uint64[]", "uint256[]"], [chains, allocations])
+  );
+
+  const commitmentSig = await operator.signTypedData(EPOCH_COMMITMENT_DOMAIN, EPOCH_COMMITMENT_TYPES, {
+    custodianId,
+    asset,
+    epochId,
+    liabilityRoot,
+    totalLiability,
+    allocationCommitment: allocCommitment,
+    leafCount,
+  });
 
   let multiplier = 0n;
   try {
@@ -85,7 +119,8 @@ async function main() {
     allocations,
     multiplier,
     unitMode,
-    leafCount
+    leafCount,
+    commitmentSig
   );
   await tx.wait();
   console.log(`commitEpoch tx: ${tx.hash}`);

@@ -18,8 +18,10 @@ async function main() {
   const deployer = signers[0];
   let reserveWallet = signers[1];
   // Single-key testnets: derive an ephemeral reserve wallet and fund it.
+  let ephemeralKey: string | undefined;
   if (!reserveWallet) {
     const funded = ethers.Wallet.createRandom().connect(ethers.provider);
+    ephemeralKey = funded.privateKey;
     const fundTx = await deployer.sendTransaction({
       to: funded.address,
       value: ethers.parseEther("0.005"),
@@ -218,6 +220,25 @@ async function main() {
   const outFile = path.join(outDir, `${networkName}.json`);
   fs.writeFileSync(outFile, JSON.stringify(deployment, null, 2));
   console.log(`\nWrote ${outFile}`);
+
+  // Never commit private keys — write secrets only to gitignored *.local.json
+  if (ephemeralKey) {
+    const localFile = path.join(outDir, `${networkName}.local.json`);
+    fs.writeFileSync(
+      localFile,
+      JSON.stringify(
+        {
+          network: networkName,
+          reserveWallet: reserveWallet.address,
+          reserveWalletPrivateKey: ephemeralKey,
+        },
+        null,
+        2
+      )
+    );
+    console.log(`Wrote reserve key to ${localFile} (gitignored — do not commit)`);
+  }
+
   console.log(JSON.stringify(deployment.contracts, null, 2));
 }
 

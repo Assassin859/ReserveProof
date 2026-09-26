@@ -81,7 +81,8 @@ contract ExitRight is ReentrancyGuard {
         if (msg.sender != op) revert NotOperator();
         if (maxPayoutDelay == 0 || maxBondPerClaim == 0) revert BadConfig();
         if (maxBondPerClaim > bondBalance[custodianId]) revert BadConfig();
-        if (maxBondTotalInFlight < maxBondPerClaim * 2) revert BadConfig();
+        // Allow at least three concurrent claims.
+        if (maxBondTotalInFlight < maxBondPerClaim * 3) revert BadConfig();
         BondConfig memory prev = bondConfigs[custodianId];
         if (prev.set && bondInFlight[custodianId] > 0 && maxBondPerClaim < prev.maxBondPerClaim) {
             revert BadConfig();

@@ -11,7 +11,7 @@ export type Neighbours = {
   rightAmount: bigint | null;
 };
 
-export const MERKLE_DOMAIN = keccak256(toUtf8Bytes("ReserveProof.MerkleSum.v1"));
+export const MERKLE_DOMAIN = keccak256(toUtf8Bytes("ReserveProof.MerkleSum.v2"));
 
 function isPowerOfTwo(n: number): boolean {
   return n > 0 && (n & (n - 1)) === 0;
@@ -21,13 +21,23 @@ export function leafHash(
   custodianId: string,
   asset: string,
   epochId: number,
+  leafCount: number,
   user: string,
   amount: bigint
 ): string {
   return keccak256(
     solidityPacked(
-      ["bytes1", "bytes32", "bytes32", "address", "uint64", "address", "uint256"],
-      ["0x00", MERKLE_DOMAIN, custodianId, getAddress(asset), epochId, getAddress(user), amount]
+      ["bytes1", "bytes32", "bytes32", "address", "uint64", "uint32", "address", "uint256"],
+      [
+        "0x00",
+        MERKLE_DOMAIN,
+        custodianId,
+        getAddress(asset),
+        epochId,
+        leafCount,
+        getAddress(user),
+        amount,
+      ]
     )
   );
 }
@@ -50,6 +60,7 @@ type Node = { hash: string; sum: bigint; user?: string };
 
 /**
  * Build a sorted Merkle-sum tree. Leaf count must be a power of two (2, 4, 8, ...).
+ * leafCount is bound into every leaf hash (v2).
  */
 export function buildSortedTree(
   custodianId: string,
@@ -61,10 +72,12 @@ export function buildSortedTree(
   total: bigint;
   sorted: Leaf[];
   proofs: Map<string, ProofNode[]>;
+  leafCount: number;
 } {
   if (!isPowerOfTwo(leaves.length)) {
     throw new Error(`leaf count must be a power of two, got ${leaves.length}`);
   }
+  const leafCount = leaves.length;
 
   const sorted = [...leaves].sort((a, b) => {
     const aa = getAddress(a.user).toLowerCase();
@@ -73,7 +86,7 @@ export function buildSortedTree(
   });
 
   let level: Node[] = sorted.map((l) => ({
-    hash: leafHash(custodianId, asset, epochId, l.user, l.amount),
+    hash: leafHash(custodianId, asset, epochId, leafCount, l.user, l.amount),
     sum: l.amount,
     user: getAddress(l.user),
   }));
@@ -100,7 +113,7 @@ export function buildSortedTree(
     const leaf = sorted[leafIndex];
     const proof: ProofNode[] = [];
     let index = leafIndex;
-    let currentHash = leafHash(custodianId, asset, epochId, leaf.user, leaf.amount);
+    let currentHash = leafHash(custodianId, asset, epochId, leafCount, leaf.user, leaf.amount);
     let currentSum = leaf.amount;
 
     for (let li = 0; li < layers.length - 1; li++) {
@@ -125,10 +138,10 @@ export function buildSortedTree(
     total: rootNode.sum,
     sorted: sorted.map((l) => ({ user: getAddress(l.user), amount: l.amount })),
     proofs,
+    leafCount,
   };
 }
 
-/** Neighbour bounds for an address in a sorted leaf list (for omission disputes). */
 export function neighboursFor(sorted: Leaf[], user: string): Neighbours {
   const target = getAddress(user).toLowerCase();
   const idx = sorted.findIndex((l) => l.user.toLowerCase() === target);
@@ -140,7 +153,6 @@ export function neighboursFor(sorted: Leaf[], user: string): Neighbours {
       rightAmount: idx < sorted.length - 1 ? sorted[idx + 1].amount : null,
     };
   }
-  // Missing user: find insertion point
   let insertAt = sorted.findIndex((l) => l.user.toLowerCase() > target);
   if (insertAt < 0) insertAt = sorted.length;
   return {
@@ -151,7 +163,6 @@ export function neighboursFor(sorted: Leaf[], user: string): Neighbours {
   };
 }
 
-/** Serialize proof nodes for JSON / contract args. */
 export function proofToContractArgs(proof: ProofNode[]): { hash: string; sum: bigint; isLeft: boolean }[] {
   return proof.map((p) => ({ hash: p.hash, sum: p.sum, isLeft: p.isLeft }));
 }

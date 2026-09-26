@@ -70,7 +70,6 @@ export async function deployFixture(opts?: {
   const sig = await wallet1.signMessage(ethers.getBytes(msgHash));
   await registry.connect(operator).addReserveWallet(custodianId, chainId, wallet1.address, sig);
 
-  // Owner sets allowlist + first asset config (operator cannot seed fake chains).
   await assetConfig.connect(owner).setAssetConfig(
     custodianId,
     await stock.getAddress(),
@@ -112,18 +111,69 @@ export async function deployFixture(opts?: {
 
 export type Fixture = Awaited<ReturnType<typeof deployFixture>>;
 
+/** Cross-chain EpochCommitment domain (matches LiabilityLedger). */
+export const EPOCH_COMMITMENT_DOMAIN = {
+  name: "ReserveProof",
+  version: "1",
+  chainId: 0,
+  verifyingContract: ethers.ZeroAddress,
+};
+
+export const EPOCH_COMMITMENT_TYPES = {
+  EpochCommitment: [
+    { name: "custodianId", type: "bytes32" },
+    { name: "asset", type: "address" },
+    { name: "epochId", type: "uint64" },
+    { name: "liabilityRoot", type: "bytes32" },
+    { name: "totalLiability", type: "uint256" },
+    { name: "allocationCommitment", type: "bytes32" },
+    { name: "leafCount", type: "uint32" },
+  ],
+};
+
+export function allocationCommitment(chains: number[], allocations: bigint[]): string {
+  return ethers.keccak256(
+    ethers.AbiCoder.defaultAbiCoder().encode(["uint64[]", "uint256[]"], [chains, allocations])
+  );
+}
+
+export async function signEpochCommitment(
+  operator: Fixture["operator"],
+  custodianId: string,
+  asset: string,
+  epochId: number,
+  liabilityRoot: string,
+  totalLiability: bigint,
+  allocCommitment: string,
+  leafCount: number
+): Promise<string> {
+  return operator.signTypedData(EPOCH_COMMITMENT_DOMAIN, EPOCH_COMMITMENT_TYPES, {
+    custodianId,
+    asset,
+    epochId,
+    liabilityRoot,
+    totalLiability,
+    allocationCommitment: allocCommitment,
+    leafCount,
+  });
+}
+
 export async function commitAndSample(
   f: Fixture,
   leaves: Leaf[],
   epochId = 1
 ): Promise<{ root: string; total: bigint; proofs: Map<string, ProofNode[]>; asset: string }> {
   const asset = await f.stock.getAddress();
-  const { root, total, proofs, sorted } = buildSortedTree(f.custodianId, asset, epochId, leaves);
+  const { root, total, proofs, sorted, leafCount } = buildSortedTree(
+    f.custodianId,
+    asset,
+    epochId,
+    leaves
+  );
   void sorted;
 
   const rawChains = await f.assetConfig.getAllocationChains(f.custodianId, asset);
   const chains = rawChains.map((c: bigint | number) => Number(c));
-  // Equal split across allowlist (last chain gets remainder).
   const n = chains.length;
   const base = total / BigInt(n);
   const allocations: bigint[] = [];
@@ -133,6 +183,18 @@ export async function commitAndSample(
     allocations.push(a);
     sum += a;
   }
+
+  const allocCmt = allocationCommitment(chains, allocations);
+  const commitmentSig = await signEpochCommitment(
+    f.operator,
+    f.custodianId,
+    asset,
+    epochId,
+    root,
+    total,
+    allocCmt,
+    leafCount
+  );
 
   await f.ledger
     .connect(f.operator)
@@ -146,7 +208,8 @@ export async function commitAndSample(
       allocations,
       ethers.parseEther("1"),
       0,
-      leaves.length
+      leafCount,
+      commitmentSig
     );
 
   await f.sampler.connect(f.operator).setSampleWallets(f.custodianId, asset, [f.wallet1.address]);

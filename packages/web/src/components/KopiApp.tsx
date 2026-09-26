@@ -124,6 +124,7 @@ export function KopiApp() {
         totalLiability: epoch[1] as bigint,
         allocation: epoch[2] as bigint,
         exists: epoch[6] as boolean,
+        leafCount: epoch[7] as number | bigint,
       };
     }
     const e = epoch as {
@@ -131,6 +132,7 @@ export function KopiApp() {
       totalLiability: bigint;
       allocation: bigint;
       exists: boolean;
+      leafCount?: number | bigint;
     };
     return e;
   }, [epoch]);
@@ -175,6 +177,7 @@ export function KopiApp() {
         custodianId: dep.custodianId,
         asset: dep.contracts.MockStockToken,
         epochId: Number(epochId),
+        leafCount: Number(epochData.leafCount ?? 0),
         user: parsedProof.user as Address,
         amount: BigInt(parsedProof.amount),
         root: epochData.liabilityRoot,

@@ -1,13 +1,31 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {CustodianRegistry} from "./CustodianRegistry.sol";
 import {AssetConfig} from "./AssetConfig.sol";
 import {RPTypes} from "./libraries/RPTypes.sol";
 import {IERC8056} from "./interfaces/IToken.sol";
 
 /// @title LiabilityLedger
+/// @notice Epoch commits require an EIP-712 EpochCommitment signature (cross-chain equivocation detectability).
 contract LiabilityLedger {
+    using ECDSA for bytes32;
+
+    bytes32 public constant EPOCH_COMMITMENT_TYPEHASH = keccak256(
+        "EpochCommitment(bytes32 custodianId,address asset,uint64 epochId,bytes32 liabilityRoot,uint256 totalLiability,bytes32 allocationCommitment,uint32 leafCount)"
+    );
+    /// @dev Cross-chain domain (chainId=0, verifyingContract=0) so one sig works on every deployment.
+    bytes32 private constant CROSS_CHAIN_DOMAIN_SEPARATOR = keccak256(
+        abi.encode(
+            keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+            keccak256(bytes("ReserveProof")),
+            keccak256(bytes("1")),
+            uint256(0),
+            address(0)
+        )
+    );
+
     CustodianRegistry public immutable registry;
     AssetConfig public immutable assetConfig;
 
@@ -22,7 +40,8 @@ contract LiabilityLedger {
         uint256 totalLiability,
         uint256 allocation,
         bytes32 allocationCommitment,
-        uint32 leafCount
+        uint32 leafCount,
+        bytes32 commitmentDigest
     );
 
     error NotOperator();
@@ -31,6 +50,7 @@ contract LiabilityLedger {
     error BadEpoch();
     error BadAllocation();
     error BadLeafCount();
+    error BadCommitmentSig();
     error MultiplierRequired();
     error PendingMultiplier();
 
@@ -39,8 +59,7 @@ contract LiabilityLedger {
         assetConfig = assetConfig_;
     }
 
-    /// @notice Commit an epoch. Allocation vector must match the owner allowlist in order,
-    ///         sum to totalLiability, and leafCount must be a power of two (>= 2).
+    /// @notice Commit an epoch. Operator must sign EpochCommitment (same bytes on every chain).
     function commitEpoch(
         bytes32 custodianId,
         address asset,
@@ -51,7 +70,8 @@ contract LiabilityLedger {
         uint256[] calldata allocations,
         uint256 multiplierSnapshot,
         uint8 unitMode,
-        uint32 leafCount
+        uint32 leafCount,
+        bytes calldata commitmentSig
     ) external {
         (address op, bool active, ) = registry.custodians(custodianId);
         if (msg.sender != op) revert NotOperator();
@@ -65,6 +85,12 @@ contract LiabilityLedger {
 
         (uint256 allocation, bytes32 commitment) =
             _localAllocation(custodianId, asset, cfg.chainId, totalLiability, allocationChainIds, allocations);
+
+        bytes32 digest = _commitmentDigest(
+            custodianId, asset, epochId, liabilityRoot, totalLiability, commitment, leafCount
+        );
+        address signer = digest.recover(commitmentSig);
+        if (signer != op) revert BadCommitmentSig();
 
         if (cfg.isStockToken) {
             uint256 liveMul = IERC8056(cfg.token).uiMultiplier();
@@ -91,11 +117,26 @@ contract LiabilityLedger {
             unitMode: unitMode,
             exists: true,
             leafCount: leafCount,
-            allocationCommitment: commitment
+            allocationCommitment: commitment,
+            commitmentDigest: digest
         });
         latestEpochId[custodianId][asset] = epochId;
         emit EpochCommitted(
-            custodianId, asset, epochId, liabilityRoot, totalLiability, allocation, commitment, leafCount
+            custodianId, asset, epochId, liabilityRoot, totalLiability, allocation, commitment, leafCount, digest
+        );
+    }
+
+    function commitmentDigest(
+        bytes32 custodianId,
+        address asset,
+        uint64 epochId,
+        bytes32 liabilityRoot,
+        uint256 totalLiability,
+        bytes32 allocationCommitment,
+        uint32 leafCount
+    ) external pure returns (bytes32) {
+        return _commitmentDigest(
+            custodianId, asset, epochId, liabilityRoot, totalLiability, allocationCommitment, leafCount
         );
     }
 
@@ -115,6 +156,30 @@ contract LiabilityLedger {
             d++;
         }
         return d;
+    }
+
+    function _commitmentDigest(
+        bytes32 custodianId,
+        address asset,
+        uint64 epochId,
+        bytes32 liabilityRoot,
+        uint256 totalLiability,
+        bytes32 allocationCommitment,
+        uint32 leafCount
+    ) internal pure returns (bytes32) {
+        bytes32 structHash = keccak256(
+            abi.encode(
+                EPOCH_COMMITMENT_TYPEHASH,
+                custodianId,
+                asset,
+                epochId,
+                liabilityRoot,
+                totalLiability,
+                allocationCommitment,
+                leafCount
+            )
+        );
+        return keccak256(abi.encodePacked("\x19\x01", CROSS_CHAIN_DOMAIN_SEPARATOR, structHash));
     }
 
     function _localAllocation(

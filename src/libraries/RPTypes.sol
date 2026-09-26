@@ -34,5 +34,6 @@ library RPTypes {
         bool exists;
         uint32 leafCount;
         bytes32 allocationCommitment;
+        bytes32 commitmentDigest; // EIP-712 EpochCommitment hash
     }
 }
