@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+cache/
+artifacts/
+typechain-types/
+coverage/
+coverage.json
+
+# Foundry
+out/
+cache_forge/
+broadcast/
+lib/
+
+# Env
+.env
+.env.*
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Misc
+*.log
+dist/
