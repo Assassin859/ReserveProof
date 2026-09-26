@@ -8,26 +8,18 @@ import {RPTypes} from "./libraries/RPTypes.sol";
 import {IERC8056} from "./interfaces/IToken.sol";
 
 /// @title LiabilityLedger
-/// @notice Epoch commits require an EIP-712 EpochCommitment signature (cross-chain equivocation detectability).
+/// @notice Epoch commits require an EIP-712 EpochCommitment over cross-chain assetId + deployment salt.
 contract LiabilityLedger {
     using ECDSA for bytes32;
 
     bytes32 public constant EPOCH_COMMITMENT_TYPEHASH = keccak256(
-        "EpochCommitment(bytes32 custodianId,address asset,uint64 epochId,bytes32 liabilityRoot,uint256 totalLiability,bytes32 allocationCommitment,uint32 leafCount)"
-    );
-    /// @dev Cross-chain domain (chainId=0, verifyingContract=0) so one sig works on every deployment.
-    bytes32 private constant CROSS_CHAIN_DOMAIN_SEPARATOR = keccak256(
-        abi.encode(
-            keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
-            keccak256(bytes("ReserveProof")),
-            keccak256(bytes("1")),
-            uint256(0),
-            address(0)
-        )
+        "EpochCommitment(bytes32 custodianId,bytes32 assetId,uint64 epochId,bytes32 liabilityRoot,uint256 totalLiability,bytes32 allocationCommitment,uint32 leafCount)"
     );
 
     CustodianRegistry public immutable registry;
     AssetConfig public immutable assetConfig;
+    bytes32 public immutable deploymentSalt;
+    bytes32 public immutable domainSeparator;
 
     mapping(bytes32 => mapping(address => uint64)) public latestEpochId;
     mapping(bytes32 => mapping(address => mapping(uint64 => RPTypes.Epoch))) public epochs;
@@ -54,9 +46,22 @@ contract LiabilityLedger {
     error MultiplierRequired();
     error PendingMultiplier();
 
-    constructor(CustodianRegistry registry_, AssetConfig assetConfig_) {
+    constructor(CustodianRegistry registry_, AssetConfig assetConfig_, bytes32 deploymentSalt_) {
         registry = registry_;
         assetConfig = assetConfig_;
+        deploymentSalt = deploymentSalt_;
+        domainSeparator = keccak256(
+            abi.encode(
+                keccak256(
+                    "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract,bytes32 salt)"
+                ),
+                keccak256(bytes("ReserveProof")),
+                keccak256(bytes("1")),
+                uint256(0),
+                address(0),
+                deploymentSalt_
+            )
+        );
     }
 
     /// @notice Commit an epoch. Operator must sign EpochCommitment (same bytes on every chain).
@@ -87,7 +92,7 @@ contract LiabilityLedger {
             _localAllocation(custodianId, asset, cfg.chainId, totalLiability, allocationChainIds, allocations);
 
         bytes32 digest = _commitmentDigest(
-            custodianId, asset, epochId, liabilityRoot, totalLiability, commitment, leafCount
+            custodianId, cfg.assetId, epochId, liabilityRoot, totalLiability, commitment, leafCount
         );
         address signer = digest.recover(commitmentSig);
         if (signer != op) revert BadCommitmentSig();
@@ -126,6 +131,7 @@ contract LiabilityLedger {
         );
     }
 
+    /// @notice Digest for a local asset address (looks up cross-chain assetId).
     function commitmentDigest(
         bytes32 custodianId,
         address asset,
@@ -134,9 +140,24 @@ contract LiabilityLedger {
         uint256 totalLiability,
         bytes32 allocationCommitment,
         uint32 leafCount
-    ) external pure returns (bytes32) {
+    ) external view returns (bytes32) {
+        AssetConfig.Config memory cfg = assetConfig.getConfig(custodianId, asset);
         return _commitmentDigest(
-            custodianId, asset, epochId, liabilityRoot, totalLiability, allocationCommitment, leafCount
+            custodianId, cfg.assetId, epochId, liabilityRoot, totalLiability, allocationCommitment, leafCount
+        );
+    }
+
+    function commitmentDigestForAssetId(
+        bytes32 custodianId,
+        bytes32 assetId,
+        uint64 epochId,
+        bytes32 liabilityRoot,
+        uint256 totalLiability,
+        bytes32 allocationCommitment,
+        uint32 leafCount
+    ) external view returns (bytes32) {
+        return _commitmentDigest(
+            custodianId, assetId, epochId, liabilityRoot, totalLiability, allocationCommitment, leafCount
         );
     }
 
@@ -160,18 +181,18 @@ contract LiabilityLedger {
 
     function _commitmentDigest(
         bytes32 custodianId,
-        address asset,
+        bytes32 assetId,
         uint64 epochId,
         bytes32 liabilityRoot,
         uint256 totalLiability,
         bytes32 allocationCommitment,
         uint32 leafCount
-    ) internal pure returns (bytes32) {
+    ) internal view returns (bytes32) {
         bytes32 structHash = keccak256(
             abi.encode(
                 EPOCH_COMMITMENT_TYPEHASH,
                 custodianId,
-                asset,
+                assetId,
                 epochId,
                 liabilityRoot,
                 totalLiability,
@@ -179,7 +200,7 @@ contract LiabilityLedger {
                 leafCount
             )
         );
-        return keccak256(abi.encodePacked("\x19\x01", CROSS_CHAIN_DOMAIN_SEPARATOR, structHash));
+        return keccak256(abi.encodePacked("\x19\x01", domainSeparator, structHash));
     }
 
     function _localAllocation(

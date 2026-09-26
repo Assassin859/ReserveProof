@@ -1,13 +1,22 @@
 import { ethers } from "hardhat";
 import { buildSortedTree, type Leaf, type ProofNode } from "./merkle";
 
+export const TEST_DEPLOYMENT_SALT = ethers.id("ReserveProof.test");
+export const TEST_ASSET_ID = ethers.id("TSLA");
+export const CHALLENGE_WINDOW = 3600;
+export const CLEAR_TIMELOCK = 3600;
+
 export async function deployFixture(opts?: {
   maxOracleAge?: number;
   minSamples?: number;
   allocationChains?: number[];
+  assetId?: string;
+  deploymentSalt?: string;
 }) {
   const maxOracleAge = opts?.maxOracleAge ?? 7 * 24 * 3600;
   const minSamples = opts?.minSamples ?? 2;
+  const assetId = opts?.assetId ?? TEST_ASSET_ID;
+  const deploymentSalt = opts?.deploymentSalt ?? TEST_DEPLOYMENT_SALT;
 
   const [owner, operator, userA, userB, userC, userD, wallet1] = await ethers.getSigners();
 
@@ -18,7 +27,11 @@ export async function deployFixture(opts?: {
   const assetConfig = await AssetConfig.deploy(owner.address, await registry.getAddress());
 
   const Ledger = await ethers.getContractFactory("LiabilityLedger");
-  const ledger = await Ledger.deploy(await registry.getAddress(), await assetConfig.getAddress());
+  const ledger = await Ledger.deploy(
+    await registry.getAddress(),
+    await assetConfig.getAddress(),
+    deploymentSalt
+  );
 
   const Sampler = await ethers.getContractFactory("ReserveSampler");
   const sampler = await Sampler.deploy(
@@ -28,7 +41,12 @@ export async function deployFixture(opts?: {
   );
 
   const Disputes = await ethers.getContractFactory("DisputeModule");
-  const disputes = await Disputes.deploy(await registry.getAddress(), await ledger.getAddress(), 3600);
+  const disputes = await Disputes.deploy(
+    await registry.getAddress(),
+    await ledger.getAddress(),
+    CLEAR_TIMELOCK,
+    CHALLENGE_WINDOW
+  );
 
   const Oracle = await ethers.getContractFactory("SolvencyOracle");
   const oracle = await Oracle.deploy(
@@ -81,6 +99,7 @@ export async function deployFixture(opts?: {
     maxOracleAge,
     minSamples,
     1,
+    assetId,
     allocationChains
   );
 
@@ -106,23 +125,27 @@ export async function deployFixture(opts?: {
     stock,
     custodianId,
     chainId,
+    assetId,
+    deploymentSalt,
   };
 }
 
 export type Fixture = Awaited<ReturnType<typeof deployFixture>>;
 
-/** Cross-chain EpochCommitment domain (matches LiabilityLedger). */
-export const EPOCH_COMMITMENT_DOMAIN = {
-  name: "ReserveProof",
-  version: "1",
-  chainId: 0,
-  verifyingContract: ethers.ZeroAddress,
-};
+export function epochCommitmentDomain(deploymentSalt: string) {
+  return {
+    name: "ReserveProof",
+    version: "1",
+    chainId: 0,
+    verifyingContract: ethers.ZeroAddress,
+    salt: deploymentSalt,
+  };
+}
 
 export const EPOCH_COMMITMENT_TYPES = {
   EpochCommitment: [
     { name: "custodianId", type: "bytes32" },
-    { name: "asset", type: "address" },
+    { name: "assetId", type: "bytes32" },
     { name: "epochId", type: "uint64" },
     { name: "liabilityRoot", type: "bytes32" },
     { name: "totalLiability", type: "uint256" },
@@ -139,17 +162,18 @@ export function allocationCommitment(chains: number[], allocations: bigint[]): s
 
 export async function signEpochCommitment(
   operator: Fixture["operator"],
+  deploymentSalt: string,
   custodianId: string,
-  asset: string,
+  assetId: string,
   epochId: number,
   liabilityRoot: string,
   totalLiability: bigint,
   allocCommitment: string,
   leafCount: number
 ): Promise<string> {
-  return operator.signTypedData(EPOCH_COMMITMENT_DOMAIN, EPOCH_COMMITMENT_TYPES, {
+  return operator.signTypedData(epochCommitmentDomain(deploymentSalt), EPOCH_COMMITMENT_TYPES, {
     custodianId,
-    asset,
+    assetId,
     epochId,
     liabilityRoot,
     totalLiability,
@@ -187,8 +211,9 @@ export async function commitAndSample(
   const allocCmt = allocationCommitment(chains, allocations);
   const commitmentSig = await signEpochCommitment(
     f.operator,
+    f.deploymentSalt,
     f.custodianId,
-    asset,
+    f.assetId,
     epochId,
     root,
     total,
@@ -225,6 +250,45 @@ export async function commitAndSample(
   }
 
   return { root, total, proofs, asset };
+}
+
+export async function commitSigned(
+  f: Fixture,
+  asset: string,
+  epochId: number,
+  root: string,
+  total: bigint,
+  chains: number[],
+  allocations: bigint[],
+  leafCount: number
+) {
+  const allocCmt = allocationCommitment(chains, allocations);
+  const sig = await signEpochCommitment(
+    f.operator,
+    f.deploymentSalt,
+    f.custodianId,
+    f.assetId,
+    epochId,
+    root,
+    total,
+    allocCmt,
+    leafCount
+  );
+  await f.ledger
+    .connect(f.operator)
+    .commitEpoch(
+      f.custodianId,
+      asset,
+      epochId,
+      root,
+      total,
+      chains,
+      allocations,
+      ethers.parseEther("1"),
+      0,
+      leafCount,
+      sig
+    );
 }
 
 export function twoLeaves(userA: string, userB: string, a = "100", b = "200"): Leaf[] {

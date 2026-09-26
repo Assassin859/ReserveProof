@@ -6,6 +6,7 @@
  *   ALLOCATIONS=comma-separated amounts matching allowlist order
  *     - required when allowlist length > 1
  *     - if unset and allowlist length is 1, puts full total on home chain
+ *   DEPLOYMENT_SALT / ASSET_ID — optional overrides; prefer deployment JSON
  */
 import hre from "hardhat";
 import { ethers } from "hardhat";
@@ -16,17 +17,10 @@ function loadJson(p: string) {
   return JSON.parse(fs.readFileSync(p, "utf8"));
 }
 
-const EPOCH_COMMITMENT_DOMAIN = {
-  name: "ReserveProof",
-  version: "1",
-  chainId: 0,
-  verifyingContract: ethers.ZeroAddress,
-};
-
 const EPOCH_COMMITMENT_TYPES = {
   EpochCommitment: [
     { name: "custodianId", type: "bytes32" },
-    { name: "asset", type: "address" },
+    { name: "assetId", type: "bytes32" },
     { name: "epochId", type: "uint64" },
     { name: "liabilityRoot", type: "bytes32" },
     { name: "totalLiability", type: "uint256" },
@@ -64,6 +58,13 @@ async function main() {
   const leafCount = Number(rootDoc.leafCount ?? rootDoc.sorted?.length ?? 0);
   const unitMode = Number(process.env.UNIT_MODE || "0");
 
+  const cfg = await assetConfig.getConfig(custodianId, asset);
+  const assetId = (cfg.assetId as string) || dep.assetIds?.stock || ethers.id("TSLA");
+  const deploymentSalt =
+    (await ledger.deploymentSalt()) ||
+    dep.deploymentSalt ||
+    ethers.id(process.env.DEPLOYMENT_SALT || "ReserveProof.v1");
+
   const rawChains: bigint[] = [...(await assetConfig.getAllocationChains(custodianId, asset))];
   if (rawChains.length === 0) throw new Error("No allocation allowlist set");
   const chains = rawChains.map((c) => Number(c));
@@ -87,9 +88,17 @@ async function main() {
     ethers.AbiCoder.defaultAbiCoder().encode(["uint64[]", "uint256[]"], [chains, allocations])
   );
 
-  const commitmentSig = await operator.signTypedData(EPOCH_COMMITMENT_DOMAIN, EPOCH_COMMITMENT_TYPES, {
+  const domain = {
+    name: "ReserveProof",
+    version: "1",
+    chainId: 0,
+    verifyingContract: ethers.ZeroAddress,
+    salt: deploymentSalt,
+  };
+
+  const commitmentSig = await operator.signTypedData(domain, EPOCH_COMMITMENT_TYPES, {
     custodianId,
-    asset,
+    assetId,
     epochId,
     liabilityRoot,
     totalLiability,
@@ -105,6 +114,7 @@ async function main() {
   }
 
   console.log(`Network: ${hre.network.name}`);
+  console.log(`AssetId: ${assetId}`);
   console.log(`Chains: ${chains.map(String).join(",")}`);
   console.log(`Allocations: ${allocations.map(String).join(",")}`);
   console.log(`LeafCount: ${leafCount}`);

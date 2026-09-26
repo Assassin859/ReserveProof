@@ -97,8 +97,9 @@ describe("ReserveProof oracle basics", function () {
     const allocCmt = allocationCommitment([f.chainId], [total]);
     const sig = await signEpochCommitment(
       f.operator,
+      f.deploymentSalt,
       f.custodianId,
-      asset,
+      f.assetId,
       1,
       root,
       total,

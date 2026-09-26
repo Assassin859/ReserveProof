@@ -7,7 +7,7 @@ import {RPTypes} from "./libraries/RPTypes.sol";
 
 /// @title AssetConfig
 /// @notice Allocation allowlist is owner-only and frozen after first set.
-///         Other identity fields: operator or owner on first set; only owner may tighten later.
+///         assetId is a cross-chain identity (immutable after first set).
 contract AssetConfig is Ownable {
     uint64 public constant MIN_ORACLE_AGE = 1 hours;
 
@@ -21,6 +21,7 @@ contract AssetConfig is Ownable {
         uint8 minSamples;
         uint64 minSampleGap;
         bool exists;
+        bytes32 assetId; // cross-chain identity for EpochCommitment
     }
 
     CustodianRegistry public immutable registry;
@@ -29,7 +30,7 @@ contract AssetConfig is Ownable {
     mapping(bytes32 => mapping(address => mapping(uint64 => bool))) public isAllocationChain;
     mapping(bytes32 => mapping(address => bool)) public allocationChainsSet;
 
-    event AssetConfigured(bytes32 indexed custodianId, address indexed asset);
+    event AssetConfigured(bytes32 indexed custodianId, address indexed asset, bytes32 assetId);
     event AllocationChainsSet(bytes32 indexed custodianId, address indexed asset, uint64[] chainIds);
 
     error NotOperator();
@@ -53,6 +54,7 @@ contract AssetConfig is Ownable {
         emit AllocationChainsSet(custodianId, asset, allocationChainIds);
     }
 
+    /// @param assetId Cross-chain asset key (e.g. keccak256("TSLA")); immutable after first set.
     /// @param allocationChainIds Ignored after allowlist is set; on first config must be empty
     ///        (use `setAllocationChains` as owner) or owner may pass them inline once.
     function setAssetConfig(
@@ -66,18 +68,19 @@ contract AssetConfig is Ownable {
         uint64 maxOracleAge,
         uint8 minSamples,
         uint64 minSampleGap,
+        bytes32 assetId,
         uint64[] calldata allocationChainIds
     ) external {
         (address op, bool active, ) = _custodian(custodianId);
         if (!active) revert NotOperator();
         if (token == address(0) || coverageFloorBps < 10_000 || minSamples == 0) revert BadParams();
+        if (assetId == bytes32(0)) revert BadParams();
         if (unitMode > RPTypes.UNIT_ECONOMIC) revert BadParams();
         if (maxOracleAge < MIN_ORACLE_AGE) revert BadParams();
 
         Config storage cur = configs[custodianId][asset];
         if (!cur.exists) {
             if (msg.sender != op && msg.sender != owner()) revert NotOperator();
-            // Allowlist: owner-only. Operator cannot seed fake chains.
             if (!allocationChainsSet[custodianId][asset]) {
                 if (msg.sender != owner()) revert NotOperator();
                 if (allocationChainIds.length == 0) revert BadParams();
@@ -89,7 +92,10 @@ contract AssetConfig is Ownable {
             }
         } else {
             if (msg.sender != owner()) revert NotOperator();
-            if (token != cur.token || chainId != cur.chainId || isStockToken != cur.isStockToken || unitMode != cur.unitMode) {
+            if (
+                token != cur.token || chainId != cur.chainId || isStockToken != cur.isStockToken
+                    || unitMode != cur.unitMode || assetId != cur.assetId
+            ) {
                 revert ImmutableField();
             }
             if (allocationChainIds.length != 0) revert ImmutableField();
@@ -108,9 +114,10 @@ contract AssetConfig is Ownable {
             maxOracleAge: maxOracleAge,
             minSamples: minSamples,
             minSampleGap: minSampleGap,
-            exists: true
+            exists: true,
+            assetId: assetId
         });
-        emit AssetConfigured(custodianId, asset);
+        emit AssetConfigured(custodianId, asset, assetId);
     }
 
     function getConfig(bytes32 custodianId, address asset) external view returns (Config memory) {

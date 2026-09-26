@@ -10,8 +10,12 @@ const USDG: Record<string, string> = {
 };
 
 const CLEAR_TIMELOCK = 3600;
+const CHALLENGE_WINDOW = 3600;
 const REMOVAL_DELAY = 3600;
 const CUSTODIAN_NAME = process.env.CUSTODIAN_NAME || "kopi";
+const DEPLOYMENT_SALT = ethers.id(process.env.DEPLOYMENT_SALT || "ReserveProof.v1");
+const ASSET_ID_STOCK = ethers.id(process.env.ASSET_ID || "TSLA");
+const ASSET_ID_USDG = ethers.id(process.env.ASSET_ID_USDG || "USDG");
 
 async function main() {
   const signers = await ethers.getSigners();
@@ -63,9 +67,14 @@ async function main() {
   console.log(`AssetConfig: ${await assetConfig.getAddress()}`);
 
   const Ledger = await ethers.getContractFactory("LiabilityLedger");
-  const ledger = await Ledger.deploy(await registry.getAddress(), await assetConfig.getAddress());
+  const ledger = await Ledger.deploy(
+    await registry.getAddress(),
+    await assetConfig.getAddress(),
+    DEPLOYMENT_SALT
+  );
   await ledger.waitForDeployment();
   console.log(`LiabilityLedger: ${await ledger.getAddress()}`);
+  console.log(`Deployment salt: ${DEPLOYMENT_SALT}`);
 
   const Sampler = await ethers.getContractFactory("ReserveSampler");
   const sampler = await Sampler.deploy(
@@ -80,7 +89,8 @@ async function main() {
   const disputes = await Disputes.deploy(
     await registry.getAddress(),
     await ledger.getAddress(),
-    CLEAR_TIMELOCK
+    CLEAR_TIMELOCK,
+    CHALLENGE_WINDOW
   );
   await disputes.waitForDeployment();
   console.log(`DisputeModule: ${await disputes.getAddress()}`);
@@ -152,6 +162,7 @@ async function main() {
       7 * 24 * 3600,
       2,
       60,
+      ASSET_ID_STOCK,
       stockAllocChains
     )
   ).wait();
@@ -169,6 +180,7 @@ async function main() {
       7 * 24 * 3600,
       2,
       60,
+      ASSET_ID_USDG,
       usdgAllocChains
     )
   ).wait();
@@ -200,6 +212,11 @@ async function main() {
     reserveWallet: reserveWallet.address,
     custodianName: CUSTODIAN_NAME,
     custodianId,
+    deploymentSalt: DEPLOYMENT_SALT,
+    assetIds: {
+      stock: ASSET_ID_STOCK,
+      usdg: ASSET_ID_USDG,
+    },
     contracts: {
       CustodianRegistry: await registry.getAddress(),
       AssetConfig: await assetConfig.getAddress(),

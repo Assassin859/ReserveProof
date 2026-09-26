@@ -25,6 +25,12 @@ broadcast/
 .DS_Store
 Thumbs.db
 
+# Misc
+*.log
+dist/
+packages/cli/examples/out/
+packages/web/.next/
+packages/web/out/
+
 # Deploy secrets (reserve keys — never commit)
 deployments/*.local.json
-
