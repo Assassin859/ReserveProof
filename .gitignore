@@ -14,7 +14,9 @@ lib/
 
 # Env
 .env
-.env.*
+.env.local
+.env.*.local
+!.env.example
 
 # IDE / OS
 .idea/
@@ -26,3 +28,4 @@ Thumbs.db
 # Misc
 *.log
 dist/
+packages/cli/examples/out/

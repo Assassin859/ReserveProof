@@ -1,0 +1,167 @@
+import hre from "hardhat";
+import { ethers } from "hardhat";
+import * as fs from "fs";
+import * as path from "path";
+
+/** Official Paxos USDG test tokens (6 decimals). */
+const USDG: Record<string, string> = {
+  robinhoodTestnet: "0x7E955252E15c84f5768B83c41a71F9eba181802F",
+  arbitrumSepolia: "0xFFC95faa3d63Cde504a05B567C600B78C0b41892",
+};
+
+const CLEAR_TIMELOCK = 3600;
+const REMOVAL_DELAY = 3600;
+const CUSTODIAN_NAME = process.env.CUSTODIAN_NAME || "kopi";
+
+async function main() {
+  const [deployer] = await ethers.getSigners();
+  const network = await ethers.provider.getNetwork();
+  const networkName = hre.network.name;
+  const chainId = Number(network.chainId);
+
+  console.log(`Deployer: ${deployer.address}`);
+  console.log(`Network:  ${networkName} (chainId ${chainId})`);
+  console.log(
+    `Balance:  ${ethers.formatEther(await ethers.provider.getBalance(deployer.address))} ETH`
+  );
+
+  let usdgAddress = USDG[networkName] || "";
+  if (!usdgAddress) {
+    const MockUSDG = await ethers.getContractFactory("MockUSDG");
+    const usdg = await MockUSDG.deploy();
+    await usdg.waitForDeployment();
+    usdgAddress = await usdg.getAddress();
+    console.log(`MockUSDG: ${usdgAddress}`);
+  } else {
+    console.log(`USDG (official): ${usdgAddress}`);
+  }
+
+  const Registry = await ethers.getContractFactory("CustodianRegistry");
+  const registry = await Registry.deploy(deployer.address);
+  await registry.waitForDeployment();
+  console.log(`CustodianRegistry: ${await registry.getAddress()}`);
+
+  const AssetConfig = await ethers.getContractFactory("AssetConfig");
+  const assetConfig = await AssetConfig.deploy(deployer.address, await registry.getAddress());
+  await assetConfig.waitForDeployment();
+  console.log(`AssetConfig: ${await assetConfig.getAddress()}`);
+
+  const Ledger = await ethers.getContractFactory("LiabilityLedger");
+  const ledger = await Ledger.deploy(await registry.getAddress(), await assetConfig.getAddress());
+  await ledger.waitForDeployment();
+  console.log(`LiabilityLedger: ${await ledger.getAddress()}`);
+
+  const Sampler = await ethers.getContractFactory("ReserveSampler");
+  const sampler = await Sampler.deploy(
+    await registry.getAddress(),
+    await assetConfig.getAddress(),
+    await ledger.getAddress()
+  );
+  await sampler.waitForDeployment();
+  console.log(`ReserveSampler: ${await sampler.getAddress()}`);
+
+  const Disputes = await ethers.getContractFactory("DisputeModule");
+  const disputes = await Disputes.deploy(
+    await registry.getAddress(),
+    await ledger.getAddress(),
+    CLEAR_TIMELOCK
+  );
+  await disputes.waitForDeployment();
+  console.log(`DisputeModule: ${await disputes.getAddress()}`);
+
+  const Oracle = await ethers.getContractFactory("SolvencyOracle");
+  const oracle = await Oracle.deploy(
+    await registry.getAddress(),
+    await assetConfig.getAddress(),
+    await ledger.getAddress(),
+    await sampler.getAddress(),
+    await disputes.getAddress()
+  );
+  await oracle.waitForDeployment();
+  console.log(`SolvencyOracle: ${await oracle.getAddress()}`);
+
+  const ExitRight = await ethers.getContractFactory("ExitRight");
+  const exitRight = await ExitRight.deploy(
+    await registry.getAddress(),
+    await ledger.getAddress(),
+    usdgAddress
+  );
+  await exitRight.waitForDeployment();
+  console.log(`ExitRight: ${await exitRight.getAddress()}`);
+
+  await (await oracle.setExitRight(await exitRight.getAddress())).wait();
+  console.log("Oracle ← ExitRight linked");
+
+  const Stock = await ethers.getContractFactory("MockStockToken");
+  const stock = await Stock.deploy("Mock TSLA", "mTSLA");
+  await stock.waitForDeployment();
+  console.log(`MockStockToken: ${await stock.getAddress()}`);
+
+  const custodianId = ethers.id(CUSTODIAN_NAME);
+  await (await registry.registerCustodian(custodianId, deployer.address, REMOVAL_DELAY)).wait();
+  console.log(`Custodian registered: ${CUSTODIAN_NAME} → ${custodianId}`);
+
+  await (
+    await assetConfig.setAssetConfig(
+      custodianId,
+      await stock.getAddress(),
+      await stock.getAddress(),
+      chainId,
+      true,
+      0,
+      10300,
+      7 * 24 * 3600,
+      2,
+      60
+    )
+  ).wait();
+  console.log("AssetConfig: mock stock configured");
+
+  await (
+    await assetConfig.setAssetConfig(
+      custodianId,
+      usdgAddress,
+      usdgAddress,
+      chainId,
+      false,
+      0,
+      10300,
+      7 * 24 * 3600,
+      2,
+      60
+    )
+  ).wait();
+  console.log("AssetConfig: USDG configured");
+
+  const deployment = {
+    network: networkName,
+    chainId,
+    deployedAt: new Date().toISOString(),
+    deployer: deployer.address,
+    custodianName: CUSTODIAN_NAME,
+    custodianId,
+    contracts: {
+      CustodianRegistry: await registry.getAddress(),
+      AssetConfig: await assetConfig.getAddress(),
+      LiabilityLedger: await ledger.getAddress(),
+      ReserveSampler: await sampler.getAddress(),
+      DisputeModule: await disputes.getAddress(),
+      SolvencyOracle: await oracle.getAddress(),
+      ExitRight: await exitRight.getAddress(),
+      MockStockToken: await stock.getAddress(),
+      USDG: usdgAddress,
+    },
+  };
+
+  const outDir = path.join(__dirname, "..", "deployments");
+  fs.mkdirSync(outDir, { recursive: true });
+  const outFile = path.join(outDir, `${networkName}.json`);
+  fs.writeFileSync(outFile, JSON.stringify(deployment, null, 2));
+  console.log(`\nWrote ${outFile}`);
+  console.log(JSON.stringify(deployment.contracts, null, 2));
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

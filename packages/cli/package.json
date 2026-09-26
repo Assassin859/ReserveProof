@@ -1,0 +1,11 @@
+{
+  "name": "@reserveproof/cli",
+  "version": "0.1.0",
+  "private": true,
+  "bin": {
+    "reserveproof": "./src/index.ts"
+  },
+  "dependencies": {
+    "ethers": "^6.13.5"
+  }
+}
