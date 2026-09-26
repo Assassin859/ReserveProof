@@ -11,11 +11,26 @@ const USDG: Record<string, string> = {
 
 const CLEAR_TIMELOCK = 3600;
 const CHALLENGE_WINDOW = 3600;
+const CHALLENGE_BOND = 1_000_000n; // 1 USDG (6 decimals)
 const REMOVAL_DELAY = 3600;
 const CUSTODIAN_NAME = process.env.CUSTODIAN_NAME || "kopi";
-const DEPLOYMENT_SALT = ethers.id(process.env.DEPLOYMENT_SALT || "ReserveProof.v1");
+const LOCAL_SALT_DEFAULT = "ReserveProof.v1";
 const ASSET_ID_STOCK = ethers.id(process.env.ASSET_ID || "TSLA");
 const ASSET_ID_USDG = ethers.id(process.env.ASSET_ID_USDG || "USDG");
+
+function resolveDeploymentSalt(networkName: string): string {
+  const raw = process.env.DEPLOYMENT_SALT;
+  const isLocal = networkName === "hardhat" || networkName === "localhost";
+  if (isLocal) {
+    return ethers.id(raw || LOCAL_SALT_DEFAULT);
+  }
+  if (!raw || raw === LOCAL_SALT_DEFAULT) {
+    throw new Error(
+      `DEPLOYMENT_SALT must be set to a distinct value on ${networkName} (not "${LOCAL_SALT_DEFAULT}")`
+    );
+  }
+  return ethers.id(raw);
+}
 
 async function main() {
   const signers = await ethers.getSigners();
@@ -37,6 +52,7 @@ async function main() {
   const network = await ethers.provider.getNetwork();
   const networkName = hre.network.name;
   const chainId = Number(network.chainId);
+  const DEPLOYMENT_SALT = resolveDeploymentSalt(networkName);
 
   console.log(`Deployer: ${deployer.address}`);
   console.log(`Reserve wallet: ${reserveWallet.address}`);
@@ -89,6 +105,8 @@ async function main() {
   const disputes = await Disputes.deploy(
     await registry.getAddress(),
     await ledger.getAddress(),
+    usdgAddress,
+    CHALLENGE_BOND,
     CLEAR_TIMELOCK,
     CHALLENGE_WINDOW
   );

@@ -5,6 +5,7 @@ export const TEST_DEPLOYMENT_SALT = ethers.id("ReserveProof.test");
 export const TEST_ASSET_ID = ethers.id("TSLA");
 export const CHALLENGE_WINDOW = 3600;
 export const CLEAR_TIMELOCK = 3600;
+export const CHALLENGE_BOND = 1_000_000n; // 1 USDG (6 decimals)
 
 export async function deployFixture(opts?: {
   maxOracleAge?: number;
@@ -40,10 +41,15 @@ export async function deployFixture(opts?: {
     await ledger.getAddress()
   );
 
+  const USDG = await ethers.getContractFactory("MockUSDG");
+  const usdg = await USDG.deploy();
+
   const Disputes = await ethers.getContractFactory("DisputeModule");
   const disputes = await Disputes.deploy(
     await registry.getAddress(),
     await ledger.getAddress(),
+    await usdg.getAddress(),
+    CHALLENGE_BOND,
     CLEAR_TIMELOCK,
     CHALLENGE_WINDOW
   );
@@ -57,9 +63,6 @@ export async function deployFixture(opts?: {
     await disputes.getAddress(),
     owner.address
   );
-
-  const USDG = await ethers.getContractFactory("MockUSDG");
-  const usdg = await USDG.deploy();
 
   const ExitRight = await ethers.getContractFactory("ExitRight");
   const exitRight = await ExitRight.deploy(
@@ -105,6 +108,10 @@ export async function deployFixture(opts?: {
 
   await stock.mint(wallet1.address, ethers.parseEther("1000"));
   await usdg.mint(operator.address, 1_000_000n * 1_000_000n);
+  // Challenge bonds for common test users
+  for (const u of [userA, userB, userC, userD]) {
+    await usdg.mint(u.address, CHALLENGE_BOND * 100n);
+  }
 
   return {
     owner,
@@ -296,6 +303,15 @@ export function twoLeaves(userA: string, userB: string, a = "100", b = "200"): L
     { user: userA, amount: ethers.parseEther(a) },
     { user: userB, amount: ethers.parseEther(b) },
   ];
+}
+
+export async function approveChallengeBond(
+  f: Fixture,
+  user: Fixture["userA"],
+  signer?: Fixture["userA"]
+) {
+  const s = signer ?? user;
+  await f.usdg.connect(s).approve(await f.disputes.getAddress(), CHALLENGE_BOND);
 }
 
 export async function signBalanceStatement(

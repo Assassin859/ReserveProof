@@ -3,14 +3,18 @@ pragma solidity ^0.8.24;
 
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {CustodianRegistry} from "./CustodianRegistry.sol";
 import {LiabilityLedger} from "./LiabilityLedger.sol";
 import {MerkleSumVerifier} from "./libraries/MerkleSumVerifier.sol";
 import {RPTypes} from "./libraries/RPTypes.sol";
 
 /// @title DisputeModule
-/// @notice Per-user challenges/disputes; inclusion-only challenge answers; permanent equivocation.
+/// @notice Per-user bonded challenges with dense open index; permanent equivocation.
 contract DisputeModule is EIP712 {
+    using SafeERC20 for IERC20;
+
     bytes32 public constant BALANCE_TYPEHASH =
         keccak256(
             "BalanceStatement(bytes32 custodianId,address asset,uint64 epochId,address user,uint256 amount)"
@@ -23,6 +27,8 @@ contract DisputeModule is EIP712 {
 
     CustodianRegistry public immutable registry;
     LiabilityLedger public immutable ledger;
+    IERC20 public immutable bondToken;
+    uint256 public immutable challengeBond;
     uint64 public clearTimelock;
     uint64 public challengeWindow;
 
@@ -42,16 +48,18 @@ contract DisputeModule is EIP712 {
         uint256 amount;
         uint64 deadline;
         bool open;
-        bytes32 stmtHash; // burned only when dispute opens
+        bytes32 stmtHash;
     }
 
-    /// @dev Per-user clearable disputes. Equivocation uses equivocationPermanent instead.
     mapping(bytes32 => mapping(address => mapping(address => Dispute))) public disputes;
     mapping(bytes32 => mapping(address => uint256)) public openDisputeCount;
     mapping(bytes32 => mapping(address => bool)) public equivocationPermanent;
 
     mapping(bytes32 => mapping(address => mapping(address => Challenge))) public challenges;
-    mapping(bytes32 => mapping(address => address[])) internal _challengeUsers;
+    /// @dev Dense open-only list (swap-and-pop). Length == open challenge count (≤ 32).
+    mapping(bytes32 => mapping(address => address[])) internal _openChallengeUsers;
+    /// @dev 1-based index into _openChallengeUsers; 0 = not open.
+    mapping(bytes32 => mapping(address => mapping(address => uint256))) internal _openChallengeIndex;
 
     mapping(bytes32 => bool) public usedStatements;
     mapping(bytes32 => bool) public usedEvidence;
@@ -88,15 +96,21 @@ contract DisputeModule is EIP712 {
     error ChallengePending();
     error ChallengeExpiredErr();
     error TooManyChallenges();
+    error ZeroBond();
 
     constructor(
         CustodianRegistry registry_,
         LiabilityLedger ledger_,
+        address bondToken_,
+        uint256 challengeBond_,
         uint64 clearTimelock_,
         uint64 challengeWindow_
     ) EIP712("ReserveProof", "1") {
+        if (bondToken_ == address(0) || challengeBond_ == 0) revert ZeroBond();
         registry = registry_;
         ledger = ledger_;
+        bondToken = IERC20(bondToken_);
+        challengeBond = challengeBond_;
         clearTimelock = clearTimelock_;
         challengeWindow = challengeWindow_;
     }
@@ -106,7 +120,7 @@ contract DisputeModule is EIP712 {
     }
 
     function hasOverdueChallenge(bytes32 custodianId, address asset) public view returns (bool) {
-        address[] storage users = _challengeUsers[custodianId][asset];
+        address[] storage users = _openChallengeUsers[custodianId][asset];
         for (uint256 i = 0; i < users.length; i++) {
             Challenge storage c = challenges[custodianId][asset][users[i]];
             if (c.open && block.timestamp > c.deadline) return true;
@@ -114,8 +128,12 @@ contract DisputeModule is EIP712 {
         return false;
     }
 
-    function challengeUsers(bytes32 custodianId, address asset) external view returns (address[] memory) {
-        return _challengeUsers[custodianId][asset];
+    function openChallengeUsers(bytes32 custodianId, address asset) external view returns (address[] memory) {
+        return _openChallengeUsers[custodianId][asset];
+    }
+
+    function openChallengeCount(bytes32 custodianId, address asset) external view returns (uint256) {
+        return _openChallengeUsers[custodianId][asset].length;
     }
 
     function openMismatchDispute(
@@ -252,7 +270,7 @@ contract DisputeModule is EIP712 {
         emit DisputeOpened(custodianId, asset, address(0), epochId);
     }
 
-    /// @notice Only the subject user may open. Statement burned only if challenge expires to a dispute.
+    /// @notice Only the subject user may open. Pulls challengeBond USDG; statement burned on answer or expire.
     function challengeInclusion(
         bytes32 custodianId,
         address asset,
@@ -270,23 +288,13 @@ contract DisputeModule is EIP712 {
 
         bytes32 stmtHash = _assertStatement(custodianId, asset, epochId, user, amount, statementSig);
 
-        address[] storage users = _challengeUsers[custodianId][asset];
-        if (!challenges[custodianId][asset][user].open) {
-            // Count currently open
-            uint256 openCount;
-            for (uint256 i = 0; i < users.length; i++) {
-                if (challenges[custodianId][asset][users[i]].open) openCount++;
-            }
-            if (openCount >= MAX_OPEN_CHALLENGES) revert TooManyChallenges();
-            bool listed;
-            for (uint256 i = 0; i < users.length; i++) {
-                if (users[i] == user) {
-                    listed = true;
-                    break;
-                }
-            }
-            if (!listed) users.push(user);
-        }
+        address[] storage users = _openChallengeUsers[custodianId][asset];
+        if (users.length >= MAX_OPEN_CHALLENGES) revert TooManyChallenges();
+
+        bondToken.safeTransferFrom(msg.sender, address(this), challengeBond);
+
+        users.push(user);
+        _openChallengeIndex[custodianId][asset][user] = users.length; // 1-based
 
         uint64 deadline = uint64(block.timestamp) + challengeWindow;
         challenges[custodianId][asset][user] = Challenge({
@@ -327,7 +335,11 @@ contract DisputeModule is EIP712 {
             )
         ) revert BadProof();
 
+        bytes32 stmtHash = c.stmtHash;
         c.open = false;
+        usedStatements[stmtHash] = true;
+        _removeOpenChallenge(custodianId, asset, user);
+        bondToken.safeTransfer(user, challengeBond);
         emit ChallengeAnswered(custodianId, asset, user);
     }
 
@@ -343,6 +355,8 @@ contract DisputeModule is EIP712 {
         uint256 amount = c.amount;
         c.open = false;
         usedStatements[stmtHash] = true;
+        _removeOpenChallenge(custodianId, asset, user);
+        bondToken.safeTransfer(user, challengeBond);
         emit ChallengeExpired(custodianId, asset, user);
         _open(custodianId, asset, user, epochId, amount, KIND_CLEARABLE);
     }
@@ -390,6 +404,21 @@ contract DisputeModule is EIP712 {
         d.open = false;
         openDisputeCount[custodianId][asset] -= 1;
         emit DisputeCleared(custodianId, asset, user);
+    }
+
+    function _removeOpenChallenge(bytes32 custodianId, address asset, address user) internal {
+        uint256 idx1 = _openChallengeIndex[custodianId][asset][user];
+        if (idx1 == 0) return;
+        address[] storage users = _openChallengeUsers[custodianId][asset];
+        uint256 idx = idx1 - 1;
+        uint256 last = users.length - 1;
+        if (idx != last) {
+            address moved = users[last];
+            users[idx] = moved;
+            _openChallengeIndex[custodianId][asset][moved] = idx + 1;
+        }
+        users.pop();
+        _openChallengeIndex[custodianId][asset][user] = 0;
     }
 
     function _assertOmission(
