@@ -91,7 +91,7 @@ describe("ReserveProof oracle basics", function () {
 
     await f.ledger
       .connect(f.operator)
-      .commitEpoch(f.custodianId, asset, 1, root, total, [f.chainId], [total], ethers.parseEther("1"), 0);
+      .commitEpoch(f.custodianId, asset, 1, root, total, [f.chainId], [total], ethers.parseEther("1"), 0, 2);
     await f.sampler.connect(f.operator).setSampleWallets(f.custodianId, asset, [f.wallet1.address]);
     await f.sampler.connect(f.operator).recordSample(f.custodianId, asset);
     await ethers.provider.send("evm_increaseTime", [2]);

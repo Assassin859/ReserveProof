@@ -70,13 +70,14 @@ export async function deployFixture(opts?: {
   const sig = await wallet1.signMessage(ethers.getBytes(msgHash));
   await registry.connect(operator).addReserveWallet(custodianId, chainId, wallet1.address, sig);
 
-  await assetConfig.connect(operator).setAssetConfig(
+  // Owner sets allowlist + first asset config (operator cannot seed fake chains).
+  await assetConfig.connect(owner).setAssetConfig(
     custodianId,
     await stock.getAddress(),
     await stock.getAddress(),
     chainId,
     true,
-    0, // RAW
+    0,
     10300,
     maxOracleAge,
     minSamples,
@@ -120,6 +121,19 @@ export async function commitAndSample(
   const { root, total, proofs, sorted } = buildSortedTree(f.custodianId, asset, epochId, leaves);
   void sorted;
 
+  const rawChains = await f.assetConfig.getAllocationChains(f.custodianId, asset);
+  const chains = rawChains.map((c: bigint | number) => Number(c));
+  // Equal split across allowlist (last chain gets remainder).
+  const n = chains.length;
+  const base = total / BigInt(n);
+  const allocations: bigint[] = [];
+  let sum = 0n;
+  for (let i = 0; i < n; i++) {
+    const a = i === n - 1 ? total - sum : base;
+    allocations.push(a);
+    sum += a;
+  }
+
   await f.ledger
     .connect(f.operator)
     .commitEpoch(
@@ -128,10 +142,11 @@ export async function commitAndSample(
       epochId,
       root,
       total,
-      [f.chainId],
-      [total],
+      chains,
+      allocations,
       ethers.parseEther("1"),
-      0
+      0,
+      leaves.length
     );
 
   await f.sampler.connect(f.operator).setSampleWallets(f.custodianId, asset, [f.wallet1.address]);

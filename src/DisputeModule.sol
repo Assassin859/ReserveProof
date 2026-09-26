@@ -88,6 +88,7 @@ contract DisputeModule is EIP712 {
                 provedAmount,
                 ep.liabilityRoot,
                 ep.totalLiability,
+                ep.leafCount,
                 siblings
             )
         ) revert BadProof();
@@ -127,6 +128,7 @@ contract DisputeModule is EIP712 {
                     leftAmount,
                     ep.liabilityRoot,
                     ep.totalLiability,
+                    ep.leafCount,
                     leftSiblings
                 )
             ) revert BadProof();
@@ -141,18 +143,19 @@ contract DisputeModule is EIP712 {
                     rightAmount,
                     ep.liabilityRoot,
                     ep.totalLiability,
+                    ep.leafCount,
                     rightSiblings
                 )
             ) revert BadProof();
         }
 
-        // Always enforce index-based adjacency (edges + interior).
         if (
             !MerkleSumVerifier.verifyOmissionAdjacency(
                 leftUser,
                 leftSiblings,
                 rightUser,
-                rightSiblings
+                rightSiblings,
+                ep.leafCount
             )
         ) revert BadBounds();
 
@@ -183,6 +186,7 @@ contract DisputeModule is EIP712 {
                 d.amount,
                 ep.liabilityRoot,
                 ep.totalLiability,
+                ep.leafCount,
                 siblings
             )
         ) revert BadProof();

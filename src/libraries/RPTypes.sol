@@ -32,5 +32,7 @@ library RPTypes {
         uint64 committedAt;
         uint8 unitMode;
         bool exists;
+        uint32 leafCount;
+        bytes32 allocationCommitment;
     }
 }

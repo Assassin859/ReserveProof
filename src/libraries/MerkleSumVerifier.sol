@@ -52,7 +52,17 @@ library MerkleSumVerifier {
             );
     }
 
-    /// @notice Verify inclusion of (user, amount) under root with totalSum.
+    function treeDepthFromLeafCount(uint32 leafCount) internal pure returns (uint8) {
+        uint8 d;
+        uint32 n = leafCount;
+        while (n > 1) {
+            n >>= 1;
+            d++;
+        }
+        return d;
+    }
+
+    /// @notice Verify inclusion; proof length must equal committed tree depth.
     function verifyInclusion(
         bytes32 custodianId,
         address asset,
@@ -61,8 +71,12 @@ library MerkleSumVerifier {
         uint256 amount,
         bytes32 root,
         uint256 totalSum,
+        uint32 leafCount,
         ProofNode[] memory siblings
     ) internal pure returns (bool) {
+        if (leafCount < 2 || (leafCount & (leafCount - 1)) != 0) return false;
+        if (siblings.length != treeDepthFromLeafCount(leafCount)) return false;
+
         bytes32 computed = leafHash(custodianId, asset, epochId, user, amount);
         uint256 computedSum = amount;
 
@@ -79,8 +93,6 @@ library MerkleSumVerifier {
         return computed == root && computedSum == totalSum;
     }
 
-    /// @notice Recover leaf index from inclusion proof path bits.
-    /// @dev `isLeft == true` means sibling is on the left ⇒ current node is right child ⇒ bit 1.
     function leafIndexFromProof(ProofNode[] memory siblings) internal pure returns (uint256 index) {
         for (uint256 i = 0; i < siblings.length; i++) {
             if (siblings[i].isLeft) {
@@ -89,11 +101,6 @@ library MerkleSumVerifier {
         }
     }
 
-    function leafCountFromProof(ProofNode[] memory siblings) internal pure returns (uint256) {
-        return uint256(1) << siblings.length;
-    }
-
-    /// @notice Verify that `missing` sorts strictly between leftUser and rightUser.
     function verifyOmissionBounds(
         address missing,
         address leftUser,
@@ -105,33 +112,34 @@ library MerkleSumVerifier {
         return true;
     }
 
-    /// @notice Index-based adjacency for omission neighbours (works across subtree boundaries).
-    /// @dev Interior requires both neighbours with |leftIdx - rightIdx| == 1.
-    ///      Left edge: leftUser == 0 and rightIdx == 0.
-    ///      Right edge: rightUser == 0 and leftIdx == leafCount - 1.
+    /// @notice Index-based adjacency using committed leafCount (not proof-derived).
     function verifyOmissionAdjacency(
         address leftUser,
         ProofNode[] memory leftSiblings,
         address rightUser,
-        ProofNode[] memory rightSiblings
+        ProofNode[] memory rightSiblings,
+        uint32 leafCount
     ) internal pure returns (bool) {
+        if (leafCount < 2 || (leafCount & (leafCount - 1)) != 0) return false;
+        uint8 depth = treeDepthFromLeafCount(leafCount);
         if (leftUser == address(0) && rightUser == address(0)) return false;
 
         if (leftUser != address(0) && rightUser != address(0)) {
-            if (leftSiblings.length == 0 || leftSiblings.length != rightSiblings.length) return false;
+            if (leftSiblings.length != depth || rightSiblings.length != depth) return false;
             uint256 leftIdx = leafIndexFromProof(leftSiblings);
             uint256 rightIdx = leafIndexFromProof(rightSiblings);
+            if (leftIdx >= leafCount || rightIdx >= leafCount) return false;
             return rightIdx == leftIdx + 1;
         }
 
         if (leftUser == address(0)) {
-            if (rightSiblings.length == 0) return false;
-            return leafIndexFromProof(rightSiblings) == 0;
+            if (rightSiblings.length != depth) return false;
+            uint256 rightIdx = leafIndexFromProof(rightSiblings);
+            return rightIdx == 0;
         }
 
-        // rightUser == 0
-        if (leftSiblings.length == 0) return false;
-        uint256 leafCount = leafCountFromProof(leftSiblings);
-        return leafIndexFromProof(leftSiblings) == leafCount - 1;
+        if (leftSiblings.length != depth) return false;
+        uint256 leftIdx = leafIndexFromProof(leftSiblings);
+        return leftIdx == uint256(leafCount) - 1;
     }
 }

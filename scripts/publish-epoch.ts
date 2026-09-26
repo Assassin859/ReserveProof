@@ -1,14 +1,10 @@
 /**
  * Publish a Merkle root from CLI output (`out/root.json`) via LiabilityLedger.commitEpoch.
  *
- * Usage:
- *   npx hardhat run scripts/publish-epoch.ts --network localhost
- *
- * Env / flags via process.env:
- *   ROOT_JSON=./out/root.json
- *   DEPLOYMENT=./deployments/localhost.json
- *   ALLOCATION=  (optional; defaults to total liability)
- *   UNIT_MODE=0  (RAW default)
+ * Env:
+ *   ROOT_JSON, DEPLOYMENT, UNIT_MODE
+ *   ALLOCATIONS=comma-separated amounts matching allowlist order (optional;
+ *               default puts full total on home chain and 0 is invalid — equal split)
  */
 import hre from "hardhat";
 import { ethers } from "hardhat";
@@ -37,6 +33,7 @@ async function main() {
   const [operator] = await ethers.getSigners();
 
   const ledger = await ethers.getContractAt("LiabilityLedger", dep.contracts.LiabilityLedger);
+  const assetConfig = await ethers.getContractAt("AssetConfig", dep.contracts.AssetConfig);
   const stock = await ethers.getContractAt("MockStockToken", dep.contracts.MockStockToken);
 
   const custodianId = rootDoc.custodianId as string;
@@ -44,10 +41,27 @@ async function main() {
   const epochId = Number(rootDoc.epochId);
   const liabilityRoot = rootDoc.root as string;
   const totalLiability = BigInt(rootDoc.total);
-  const allocation = process.env.ALLOCATION
-    ? BigInt(process.env.ALLOCATION)
-    : totalLiability;
+  const leafCount = Number(rootDoc.leafCount ?? rootDoc.sorted?.length ?? 0);
   const unitMode = Number(process.env.UNIT_MODE || "0");
+
+  const rawChains: bigint[] = [...(await assetConfig.getAllocationChains(custodianId, asset))];
+  if (rawChains.length === 0) throw new Error("No allocation allowlist set");
+  const chains = rawChains.map((c) => Number(c));
+
+  let allocations: bigint[];
+  if (process.env.ALLOCATIONS) {
+    allocations = process.env.ALLOCATIONS.split(",").map((s) => BigInt(s.trim()));
+  } else {
+    const n = chains.length;
+    const base = totalLiability / BigInt(n);
+    allocations = [];
+    let sum = 0n;
+    for (let i = 0; i < n; i++) {
+      const a = i === n - 1 ? totalLiability - sum : base;
+      allocations.push(a);
+      sum += a;
+    }
+  }
 
   let multiplier = 0n;
   try {
@@ -57,27 +71,21 @@ async function main() {
   }
 
   console.log(`Network: ${hre.network.name}`);
-  console.log(`Operator: ${operator.address}`);
-  console.log(`Custodian: ${custodianId}`);
-  console.log(`Asset: ${asset}`);
-  console.log(`Epoch: ${epochId}`);
-  console.log(`Root: ${liabilityRoot}`);
-  console.log(`Total: ${totalLiability.toString()}`);
-  console.log(`Allocation: ${allocation.toString()}`);
-  console.log(`Multiplier snapshot: ${multiplier.toString()}`);
+  console.log(`Chains: ${chains.map(String).join(",")}`);
+  console.log(`Allocations: ${allocations.map(String).join(",")}`);
+  console.log(`LeafCount: ${leafCount}`);
 
-  const network = await ethers.provider.getNetwork();
-  const chainId = Number(network.chainId);
   const tx = await ledger.commitEpoch(
     custodianId,
     asset,
     epochId,
     liabilityRoot,
     totalLiability,
-    [chainId],
-    [allocation],
+    chains,
+    allocations,
     multiplier,
-    unitMode
+    unitMode,
+    leafCount
   );
   await tx.wait();
   console.log(`commitEpoch tx: ${tx.hash}`);

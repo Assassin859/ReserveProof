@@ -80,8 +80,8 @@ contract ExitRight is ReentrancyGuard {
         (address op, , ) = registry.custodians(custodianId);
         if (msg.sender != op) revert NotOperator();
         if (maxPayoutDelay == 0 || maxBondPerClaim == 0) revert BadConfig();
-        if (maxBondPerClaim > maxBondTotalInFlight) revert BadConfig();
         if (maxBondPerClaim > bondBalance[custodianId]) revert BadConfig();
+        if (maxBondTotalInFlight < maxBondPerClaim * 2) revert BadConfig();
         BondConfig memory prev = bondConfigs[custodianId];
         if (prev.set && bondInFlight[custodianId] > 0 && maxBondPerClaim < prev.maxBondPerClaim) {
             revert BadConfig();
@@ -128,6 +128,7 @@ contract ExitRight is ReentrancyGuard {
                 amount,
                 ep.liabilityRoot,
                 ep.totalLiability,
+                ep.leafCount,
                 siblings
             )
         ) revert BadProof();
