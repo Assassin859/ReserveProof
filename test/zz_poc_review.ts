@@ -409,6 +409,7 @@ describe("zz_poc_review — challenge grief / assetId / overdue", function () {
     const ch = await f.disputes.challenges(f.custodianId, asset, leaves[0].user);
     expect(ch.open).to.equal(false);
     expect(await f.disputes.openChallengeCount(f.custodianId, asset)).to.equal(0n);
+    await f.disputes.connect(f.userA).withdrawChallengeBond();
     const [ok] = await f.oracle.isSolvent(f.custodianId, asset);
     expect(ok).to.equal(true);
   });
@@ -690,6 +691,8 @@ describe("zz_poc_review — challenge grief / assetId / overdue", function () {
     await f.disputes
       .connect(f.operator)
       .answerInclusion(f.custodianId, asset, f.userA.address, proofs.get(f.userA.address.toLowerCase())!);
+    expect(await f.disputes.challengeRefunds(f.userA.address)).to.equal(CHALLENGE_BOND);
+    await f.disputes.connect(f.userA).withdrawChallengeBond();
     expect(await f.usdg.balanceOf(f.userA.address)).to.equal(before);
     expect(await f.disputes.openChallengeCount(f.custodianId, asset)).to.equal(0n);
 
@@ -701,7 +704,7 @@ describe("zz_poc_review — challenge grief / assetId / overdue", function () {
     ).to.be.revertedWithCustomError(f.disputes, "StatementUsed");
   });
 
-  it("challenge without USDG allowance reverts; bond refunded on expire", async function () {
+  it("challenge without USDG allowance reverts; bond refunded on expire via withdraw", async function () {
     const f = await deployFixture();
     const asset = await f.stock.getAddress();
     const garbageRoot = ethers.id("garbage-bond");
@@ -732,11 +735,13 @@ describe("zz_poc_review — challenge grief / assetId / overdue", function () {
     await ethers.provider.send("evm_increaseTime", [CHALLENGE_WINDOW + 1]);
     await ethers.provider.send("evm_mine", []);
     await f.disputes.expireChallenge(f.custodianId, asset, f.userA.address);
+    expect(await f.disputes.challengeRefunds(f.userA.address)).to.equal(CHALLENGE_BOND);
+    await f.disputes.connect(f.userA).withdrawChallengeBond();
     expect(await f.usdg.balanceOf(f.userA.address)).to.equal(before);
     expect(await f.disputes.openChallengeCount(f.custodianId, asset)).to.equal(0n);
   });
 
-  it("open index shrinks on answer; does not grow unboundedly across cycles", async function () {
+  it("open index shrinks on answer; FIFO head advances", async function () {
     const f = await deployFixture();
     const leaves = twoLeaves(f.userA.address, f.userB.address);
     const { proofs, asset } = await commitAndSample(f, leaves);
@@ -769,19 +774,128 @@ describe("zz_poc_review — challenge grief / assetId / overdue", function () {
       .connect(f.userB)
       .challengeInclusion(f.custodianId, asset, 1, f.userB.address, leaves[1].amount, sigB);
     expect(await f.disputes.openChallengeCount(f.custodianId, asset)).to.equal(2n);
+    expect(await f.disputes.challengeHead(f.custodianId, asset)).to.equal(0n);
 
     await f.disputes
       .connect(f.operator)
       .answerInclusion(f.custodianId, asset, f.userA.address, proofs.get(f.userA.address.toLowerCase())!);
     expect(await f.disputes.openChallengeCount(f.custodianId, asset)).to.equal(1n);
+    expect(await f.disputes.challengeHead(f.custodianId, asset)).to.equal(1n);
 
     await f.disputes
       .connect(f.operator)
       .answerInclusion(f.custodianId, asset, f.userB.address, proofs.get(f.userB.address.toLowerCase())!);
     expect(await f.disputes.openChallengeCount(f.custodianId, asset)).to.equal(0n);
-    expect((await f.disputes.openChallengeUsers(f.custodianId, asset)).length).to.equal(0);
+    expect(await f.disputes.challengeHead(f.custodianId, asset)).to.equal(2n);
 
     const status = await f.oracle.status(f.custodianId, asset);
     expect(status.ok).to.equal(true);
+  });
+
+  it("no challenge cap — more than 32 open challenges allowed", async function () {
+    const f = await deployFixture();
+    const asset = await f.stock.getAddress();
+    const garbageRoot = ethers.id("many-challenges");
+    const total = ethers.parseEther("300");
+    await commitSigned(f, asset, 1, garbageRoot, total, [f.chainId], [total], 2);
+
+    const wallets: ReturnType<typeof ethers.Wallet.createRandom>[] = [];
+    for (let i = 0; i < 33; i++) {
+      const w = ethers.Wallet.createRandom().connect(ethers.provider);
+      await f.operator.sendTransaction({ to: w.address, value: ethers.parseEther("0.01") });
+      await f.usdg.mint(w.address, CHALLENGE_BOND);
+      await f.usdg.connect(w).approve(await f.disputes.getAddress(), CHALLENGE_BOND);
+      const stated = ethers.parseEther(String(i + 1));
+      const sig = await signBalanceStatement(
+        f.disputes,
+        f.operator,
+        f.custodianId,
+        asset,
+        1,
+        w.address,
+        stated
+      );
+      await f.disputes
+        .connect(w)
+        .challengeInclusion(f.custodianId, asset, 1, w.address, stated, sig);
+      wallets.push(w);
+    }
+    expect(await f.disputes.openChallengeCount(f.custodianId, asset)).to.equal(33n);
+
+    // Real user can still open
+    await approveChallengeBond(f, f.userA);
+    const sigA = await signBalanceStatement(
+      f.disputes,
+      f.operator,
+      f.custodianId,
+      asset,
+      1,
+      f.userA.address,
+      ethers.parseEther("100")
+    );
+    await f.disputes
+      .connect(f.userA)
+      .challengeInclusion(f.custodianId, asset, 1, f.userA.address, ethers.parseEther("100"), sigA);
+    expect(await f.disputes.openChallengeCount(f.custodianId, asset)).to.equal(34n);
+    void wallets;
+  });
+
+  it("equivocation unlocks open challenge bonds for withdraw", async function () {
+    const f = await deployFixture();
+    const asset = await f.stock.getAddress();
+    const leaves = twoLeaves(f.userA.address, f.userB.address);
+    const { root, total, leafCount } = buildSortedTree(f.custodianId, asset, 1, leaves);
+    await commitSigned(f, asset, 1, root, total, [f.chainId], [total], leafCount);
+
+    const amount = leaves[0].amount;
+    const sig = await signBalanceStatement(
+      f.disputes,
+      f.operator,
+      f.custodianId,
+      asset,
+      1,
+      f.userA.address,
+      amount
+    );
+    await approveChallengeBond(f, f.userA);
+    const before = await f.usdg.balanceOf(f.userA.address);
+    await f.disputes
+      .connect(f.userA)
+      .challengeInclusion(f.custodianId, asset, 1, f.userA.address, amount, sig);
+
+    const otherRoot = ethers.id("other-root-fifo");
+    const otherTotal = total + 1n;
+    const otherAlloc = allocationCommitment([f.chainId], [otherTotal]);
+    const otherSig = await signEpochCommitment(
+      f.operator,
+      f.deploymentSalt,
+      f.custodianId,
+      f.assetId,
+      1,
+      otherRoot,
+      otherTotal,
+      otherAlloc,
+      leafCount
+    );
+    await f.disputes.openEquivocationDispute(
+      f.custodianId,
+      asset,
+      1,
+      otherRoot,
+      otherTotal,
+      otherAlloc,
+      leafCount,
+      otherSig
+    );
+
+    expect(await f.disputes.challengeRefunds(f.userA.address)).to.equal(CHALLENGE_BOND);
+    const ch = await f.disputes.challenges(f.custodianId, asset, f.userA.address);
+    expect(ch.open).to.equal(false);
+    await f.disputes.connect(f.userA).withdrawChallengeBond();
+    expect(await f.usdg.balanceOf(f.userA.address)).to.equal(before);
+
+    // expire after equivocation unlocks nothing more / does not revert trapping funds
+    await expect(f.disputes.expireChallenge(f.custodianId, asset, f.userA.address)).to.be
+      .revertedWithCustomError(f.disputes, "NoChallenge");
   });
 });
