@@ -50,6 +50,58 @@ export function nodeHash(
   );
 }
 
+export type TreeLeaf = { user: Address; amount: bigint };
+
+/** Sorted Merkle-sum tree; mirrors packages/merkle buildSortedTree (proof keys are lowercase). */
+export function buildSortedTree(
+  custodianId: Hex,
+  asset: Address,
+  epochId: number,
+  leaves: TreeLeaf[]
+): { root: Hex; total: bigint; leafCount: number; sorted: TreeLeaf[]; proofs: Map<string, ProofNode[]> } {
+  const leafCount = leaves.length;
+  if (leafCount === 0 || (leafCount & (leafCount - 1)) !== 0) {
+    throw new Error(`leaf count must be a power of two, got ${leafCount}`);
+  }
+  const sorted = [...leaves]
+    .map((l) => ({ user: getAddress(l.user), amount: l.amount }))
+    .sort((a, b) => {
+      const aa = a.user.toLowerCase();
+      const bb = b.user.toLowerCase();
+      return aa < bb ? -1 : aa > bb ? 1 : 0;
+    });
+
+  let level = sorted.map((l) => ({
+    hash: leafHash(custodianId, asset, epochId, leafCount, l.user, l.amount),
+    sum: l.amount,
+  }));
+  const layers = [level];
+  while (level.length > 1) {
+    const next: { hash: Hex; sum: bigint }[] = [];
+    for (let i = 0; i < level.length; i += 2) {
+      const [l, r] = [level[i], level[i + 1]];
+      next.push({ hash: nodeHash(l.hash, l.sum, r.hash, r.sum), sum: l.sum + r.sum });
+    }
+    layers.push(next);
+    level = next;
+  }
+
+  const proofs = new Map<string, ProofNode[]>();
+  sorted.forEach((leaf, leafIndex) => {
+    const proof: ProofNode[] = [];
+    let index = leafIndex;
+    for (let li = 0; li < layers.length - 1; li++) {
+      const isRight = index % 2 === 1;
+      const sib = layers[li][isRight ? index - 1 : index + 1];
+      proof.push({ hash: sib.hash, sum: sib.sum, isLeft: isRight });
+      index = Math.floor(index / 2);
+    }
+    proofs.set(leaf.user.toLowerCase(), proof);
+  });
+
+  return { root: level[0].hash, total: level[0].sum, leafCount, sorted, proofs };
+}
+
 /** Client-side inclusion check matching MerkleSumVerifier.verifyInclusion. */
 export function verifyInclusion(args: {
   custodianId: Hex;

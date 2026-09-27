@@ -1,0 +1,111 @@
+{
+  "robinhoodTestnet": {
+    "demoUser": "0x637701d4B28C12450A28F6f7730a3Cc4aC8239f7",
+    "liabilities": {
+      "stock": [
+        {
+          "user": "0x637701d4B28C12450A28F6f7730a3Cc4aC8239f7",
+          "amount": "100000000000000000000"
+        },
+        {
+          "user": "0x1111111111111111111111111111111111111111",
+          "amount": "200000000000000000000"
+        },
+        {
+          "user": "0x2222222222222222222222222222222222222222",
+          "amount": "50000000000000000000"
+        },
+        {
+          "user": "0x3333333333333333333333333333333333333333",
+          "amount": "150000000000000000000"
+        }
+      ],
+      "usdg": [
+        {
+          "user": "0x637701d4B28C12450A28F6f7730a3Cc4aC8239f7",
+          "amount": "20000000"
+        },
+        {
+          "user": "0x1111111111111111111111111111111111111111",
+          "amount": "30000000"
+        },
+        {
+          "user": "0x2222222222222222222222222222222222222222",
+          "amount": "10000000"
+        },
+        {
+          "user": "0x3333333333333333333333333333333333333333",
+          "amount": "20000000"
+        }
+      ]
+    },
+    "exitright": {
+      "network": "robinhoodTestnet",
+      "chainId": 46630,
+      "exitRight": "0x272644a119088A096F7fDBFE76da71fF01C0EfB6",
+      "custodianId": "0xe544bb36ab73bf753d426fa89c314484b693d377b6632a4b389e94b5547daa15",
+      "asset": "0x66069A805d8c96a710B800066FdcEAfdfBcaA248",
+      "user": "0x637701d4B28C12450A28F6f7730a3Cc4aC8239f7",
+      "claimId": 0,
+      "epochId": 1,
+      "amount": "100000000000000000000",
+      "settled": true,
+      "txs": {
+        "fund": "0x48eeb769f8b2413e40f791056a5e07544f590d11df6b59bbabde3f07cc6e0e4c",
+        "openClaim": "0xb1dc7b713cbd07fdaaaaf2fd5599cb706cee9fd2c7e1bb3568702810ef65b297",
+        "mint": "0x8f27f0891aa5e3e1563b7197d00e5e0828620abd768e03640627366c70c4985f",
+        "approve": "0x6ed6f57e523c12c79fc8436cdaa7dea2d00b80346eb818be1fbbba0badf0f735",
+        "settle": "0x8fec3e59a1824b8d09da32529f27454a2c56e1344ecc5d56c18708ce8679e2e9"
+      },
+      "recordedAt": "2026-09-27T13:22:03.345Z"
+    }
+  },
+  "arbitrumSepolia": {
+    "demoUser": "0x637701d4B28C12450A28F6f7730a3Cc4aC8239f7",
+    "liabilities": {
+      "stock": [
+        {
+          "user": "0x637701d4B28C12450A28F6f7730a3Cc4aC8239f7",
+          "amount": "100000000000000000000"
+        },
+        {
+          "user": "0x1111111111111111111111111111111111111111",
+          "amount": "200000000000000000000"
+        },
+        {
+          "user": "0x2222222222222222222222222222222222222222",
+          "amount": "50000000000000000000"
+        },
+        {
+          "user": "0x3333333333333333333333333333333333333333",
+          "amount": "150000000000000000000"
+        }
+      ]
+    },
+    "exitright": null
+  },
+  "localhost": {
+    "demoUser": null,
+    "liabilities": {
+      "stock": [
+        {
+          "user": "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
+          "amount": "100000000000000000000"
+        },
+        {
+          "user": "0x90F79bf6EB2c4f870365E785982E1f101E93b906",
+          "amount": "200000000000000000000"
+        },
+        {
+          "user": "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65",
+          "amount": "50000000000000000000"
+        },
+        {
+          "user": "0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc",
+          "amount": "150000000000000000000"
+        }
+      ]
+    },
+    "exitright": null
+  }
+}

@@ -34,8 +34,9 @@ export const SCENES = [
   },
   {
     id: 3,
-    title: "User verifies inclusion",
-    blurb: "Paste a CLI proof JSON — the UI checks it against the on-chain liability root.",
+    title: "Verify my balance",
+    blurb:
+      "Your browser rebuilds the Merkle-sum tree from the published book for the latest on-chain epoch and checks your leaf against the committed root.",
   },
   {
     id: 4,
@@ -56,5 +57,11 @@ export const SCENES = [
     id: 7,
     title: "Fraud dispute",
     blurb: "Mismatch between signed statement and tree opens DISPUTED until cleared.",
+  },
+  {
+    id: 8,
+    title: "ExitRight claim",
+    blurb:
+      "A user with a leaf proof opens a bonded withdrawal claim. The operator must settle before the deadline, or anyone can slash the bond and the oracle flips to EXIT_DEFAULT for good.",
   },
 ] as const;

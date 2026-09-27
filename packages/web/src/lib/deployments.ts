@@ -1,10 +1,31 @@
 import robinhoodTestnet from "../deployments/robinhoodTestnet.json";
 import arbitrumSepolia from "../deployments/arbitrumSepolia.json";
-import robinhoodProof from "../deployments/robinhoodTestnet.proof.json";
-import arbitrumProof from "../deployments/arbitrumSepolia.proof.json";
+import booksJson from "../deployments/books.json";
 import type { Deployment } from "./types";
 
 export type NetworkKey = "robinhoodTestnet" | "arbitrumSepolia" | "localhost";
+export type AssetKind = "stock" | "usdg";
+
+export type BookLeaf = { user: string; amount: string };
+
+export type ExitRightRecord = {
+  network: string;
+  chainId: number;
+  exitRight: string;
+  user: string;
+  claimId: number;
+  epochId: number;
+  amount: string;
+  settled: boolean;
+  txs: Record<string, string | null>;
+  recordedAt: string;
+};
+
+export type NetworkBooks = {
+  demoUser: string | null;
+  liabilities: Partial<Record<AssetKind, BookLeaf[]>>;
+  exitright: ExitRightRecord | null;
+};
 
 export type NetworkInfo = {
   key: NetworkKey;
@@ -12,8 +33,11 @@ export type NetworkInfo = {
   explorer?: string;
   /** Bundled at build time; localhost is loaded from /api/deployment instead. */
   deployment?: Deployment;
-  sampleProof?: unknown;
+  books: NetworkBooks;
 };
+
+const books = booksJson as unknown as Record<NetworkKey, NetworkBooks>;
+const emptyBooks: NetworkBooks = { demoUser: null, liabilities: {}, exitright: null };
 
 export const NETWORKS: Record<NetworkKey, NetworkInfo> = {
   robinhoodTestnet: {
@@ -21,22 +45,28 @@ export const NETWORKS: Record<NetworkKey, NetworkInfo> = {
     label: "Robinhood testnet",
     explorer: "https://explorer.testnet.chain.robinhood.com",
     deployment: robinhoodTestnet as Deployment,
-    sampleProof: robinhoodProof,
+    books: books.robinhoodTestnet ?? emptyBooks,
   },
   arbitrumSepolia: {
     key: "arbitrumSepolia",
     label: "Arbitrum Sepolia",
     explorer: "https://sepolia.arbiscan.io",
     deployment: arbitrumSepolia as Deployment,
-    sampleProof: arbitrumProof,
+    books: books.arbitrumSepolia ?? emptyBooks,
   },
   localhost: {
     key: "localhost",
     label: "Local Hardhat",
+    books: books.localhost ?? emptyBooks,
   },
 };
 
 export const NETWORK_KEYS = Object.keys(NETWORKS) as NetworkKey[];
+
+export const ASSET_META: Record<AssetKind, { label: string; decimals: number }> = {
+  stock: { label: "mTSLA", decimals: 18 },
+  usdg: { label: "USDG", decimals: 6 },
+};
 
 export function defaultNetwork(): NetworkKey {
   const env = process.env.NEXT_PUBLIC_DEFAULT_NETWORK as NetworkKey | undefined;

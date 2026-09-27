@@ -193,14 +193,14 @@ code {
 
 .stepper {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(8, 1fr);
   gap: 0.4rem;
   margin-bottom: 1.5rem;
 }
 
 @media (max-width: 900px) {
   .stepper {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(4, 1fr);
   }
 }
 
@@ -318,6 +318,17 @@ code {
   color: var(--muted);
 }
 
+.field input {
+  width: 100%;
+  background: var(--bg0);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  padding: 0.6rem 0.75rem;
+}
+
 .field textarea {
   width: 100%;
   background: var(--bg0);
@@ -355,6 +366,63 @@ code {
   border: 1px solid #2d5a42;
   color: #b6e0c8;
   font-size: 0.9rem;
+}
+
+.result.bad {
+  background: #201412;
+  border-color: #5a322c;
+  color: #e8a090;
+}
+
+.muted-text {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.primary:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.verify-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.proof-path {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.advanced {
+  width: 100%;
+  border-top: 1px solid var(--line);
+  padding-top: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.advanced summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.88rem;
+  margin-bottom: 0.75rem;
+}
+
+.advanced[open] > * + * {
+  margin-top: 0.75rem;
+}
+
+.kv a {
+  color: var(--accent);
+  text-decoration: none;
 }
 
 .log {

@@ -1,9 +1,9 @@
 {
   "network": "robinhoodTestnet",
   "chainId": 46630,
-  "deployedAt": "2026-09-27T07:29:03.206Z",
+  "deployedAt": "2026-09-27T13:00:22.088Z",
   "deployer": "0x4F38186806e8e3c96Cf39ae13F3231639DaD15Ba",
-  "reserveWallet": "0x756Db2e1616f53027300cBCb99B131fb477C9287",
+  "reserveWallet": "0xA2aDEfA7Cc77eDe9847829c0E192C5Bc436fE765",
   "custodianName": "kopi",
   "custodianId": "0xe544bb36ab73bf753d426fa89c314484b693d377b6632a4b389e94b5547daa15",
   "deploymentSalt": "0xc7d76c488931762563365bc1e1338602b045b5d98bfe6d41a15735b66339b12c",
@@ -12,16 +12,16 @@
     "usdg": "0x50c06f78ad2e5bdc0d81007456f70e6c87ac46669280a41f915860e5145b02ea"
   },
   "contracts": {
-    "CustodianRegistry": "0x59DaBFa5ed05506c130dB72ce78eAFAFFa6DD998",
-    "AssetConfig": "0x3fd2c4fe60820e1837aB1330A249997a789cDe97",
-    "LiabilityLedger": "0x5DB78Bf53c197257EF55945C25229AC25cBF2A89",
-    "ReserveSampler": "0xD15a2BEfe47d56F03e80adD82FCE5b28c5b4188D",
-    "DisputeModule": "0x4Fa1ac2bA85a5aB4Ee2B9A54c9BEA275Ee2C653C",
-    "SolvencyOracle": "0xa175E68aB9439950D1005E187f02CcaB83334dc8",
-    "ExitRight": "0x77578143aba958687369c6f181b2B6342ba7cc6d",
-    "GatedPayout": "0xEbD3EF538daF09153ffC05b38e37e6e822E1A9b3",
-    "GatedLendWithdraw": "0x45ef68a23b1BA29B5Ed7424808Ed90e7DF07f99f",
-    "MockStockToken": "0x7f864Bf11aa4905491b67601E7D881E04a7d196A",
+    "CustodianRegistry": "0x364c1D50910e3FadED506d38FabeAFc828C30F9E",
+    "AssetConfig": "0xF2204f0ca44E289d27Ea0422E6Ab7665fa316892",
+    "LiabilityLedger": "0x1F6fAfc59FFe60f2d8d779d202be17d8b36b3537",
+    "ReserveSampler": "0x88ecb274A5Eb6Dc3310c532b8c94795e65605616",
+    "DisputeModule": "0xA755d7b51Ee9E452dB7de6D87Efca2aCC0834f41",
+    "SolvencyOracle": "0xFeD7650622256e3c4CbC8642D0d4F230224D8E2f",
+    "ExitRight": "0x272644a119088A096F7fDBFE76da71fF01C0EfB6",
+    "GatedPayout": "0xed67EC461D64e42ed1472d3d74cbb32ee143a430",
+    "GatedLendWithdraw": "0xE4B526f9b8216852FD186E6a633446BD1834D7C7",
+    "MockStockToken": "0x66069A805d8c96a710B800066FdcEAfdfBcaA248",
     "USDG": "0x7E955252E15c84f5768B83c41a71F9eba181802F"
   }
 }
