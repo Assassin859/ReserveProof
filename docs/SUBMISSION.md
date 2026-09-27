@@ -1,6 +1,6 @@
-# Hackathon submission draft — ReserveProof (+ ExitRight)
+# Hackathon submission — ReserveProof (+ ExitRight)
 
-Fill explorer / video links after tomorrow’s funded deploy. See [VERIFY.md](./VERIFY.md).
+See [VERIFY.md](./VERIFY.md) for how to check every claim below yourself.
 
 ## Idea field (285 characters — locked)
 
@@ -12,7 +12,7 @@ Fill explorer / video links after tomorrow’s funded deploy. See [VERIFY.md](./
 
 **ReserveProof** is an open-source proof-of-reserves and proof-of-liabilities stack for custodians that hold **USDG** and **Robinhood Stock Tokens**. Operators publish a sorted Merkle-sum liability tree; reserves are read on-chain via multi-sample + live balance checks (using `arbBlockNumber` where available). Integrators call `isSolvent(custodianId, asset)` / `status(...)` and get a fail-closed reason code — so payouts and lending can `require` solvency instead of trusting a dashboard.
 
-**ExitRight** is the withdrawability module: bonded claims with on-chain `settle`. Unpaid claims can mark exit default and freeze solvency.
+**ExitRight** is the withdrawability module: bonded claims with on-chain `settle`. Unpaid claims are slashed to the user and permanently mark the asset as exit-defaulted.
 
 **Positioning**
 
@@ -26,55 +26,71 @@ Fill explorer / video links after tomorrow’s funded deploy. See [VERIFY.md](./
 
 ## Tracks
 
-- **Promising Products** — primary aim  
-- **Overall Prize** — stretch; Robinhood Chain deploy for reserved-seat eligibility  
-- Robinhood reserved seat: deploy + verify on Robinhood testnet (see VERIFY.md)
+- **Promising Products** — primary aim
+- **Overall Prize** — stretch; Robinhood Chain deploy for reserved-seat eligibility
+- Robinhood reserved seat: deployed and verified on Robinhood testnet (see VERIFY.md)
 
-## Demo script (~90 seconds) — seven scenes
+## Demo script (~100 seconds) — eight scenes
 
 Persona: **Kopi Wallet** (fictional SEA custodian).
 
 | t | Scene | What judges see |
 |---|---|---|
 | 0–10s | 1 Duplicate wallet | Exclusive reserve wallet — second claim rejected (`WalletTaken`) |
-| 10–25s | 2 Epoch @ 103% | Commit + samples → `isSolvent true` / `OK` |
-| 25–40s | 3 Inclusion verify | User pastes CLI proof JSON → UI verifies against on-chain root |
-| 40–55s | 4 Drain | Reserves emptied → `GatedPayout` blocked / `LIVE_SHORT` |
-| 55–65s | 5 Multiplier | `uiMultiplier` moves → `MULTIPLIER_DRIFT` |
-| 65–75s | 6 Stale | Time warp → `STALE` |
-| 75–90s | 7 Dispute | Mismatch fraud proof → `DISPUTED` |
+| 10–20s | 2 Epoch @ 103% | Live testnet: mTSLA and USDG both `isSolvent true` / `OK` |
+| 20–35s | 3 Verify my balance | *Try demo user* → browser rebuilds the tree, root matches on-chain, leaf proven |
+| 35–50s | 4 Drain | Local: reserves emptied → `GatedPayout` blocked / `LIVE_SHORT` |
+| 50–60s | 5 Multiplier | Local: `uiMultiplier` moves → `MULTIPLIER_DRIFT` |
+| 60–70s | 6 Stale | Local: time warp → `STALE` |
+| 70–85s | 7 Dispute | Local: mismatch fraud proof → `DISPUTED` |
+| 85–100s | 8 ExitRight | Live testnet: bonded claim opened by the demo user and settled by the operator |
 
 Local rehearsal (no testnet gas):
 
 ```bash
-npx hardhat node          # terminal A
-npm run demo:deploy       # terminal B
-npm run demo:cli          # build out/ from example CSV
-npm run ops:publish && npm run ops:sample
+npm run demo:node         # terminal A
+npm run demo:setup        # terminal B: deploy → build → publish → sample → snapshot
 npm run demo:web          # http://localhost:3000
-# then SCENE=4|5|6|7 npm run demo:prepare
+# then SCENE=4|5|6|7 npm run demo:prepare, and npm run demo:reset between takes
 ```
 
-## Placeholders (fill after deploy)
+## Live deployment
 
-| Item | Link |
+The same addresses on both chains (identical deployer nonce sequence). Robinhood: all 10 contracts verified on Blockscout (`npm run verify:rh`). Arbitrum Sepolia: all 10 exact-match on Sourcify (`npm run verify:sourcify`).
+
+| Contract | Robinhood testnet | Arbitrum Sepolia |
+|---|---|---|
+| CustodianRegistry | [0x364c…0F9E](https://explorer.testnet.chain.robinhood.com/address/0x364c1D50910e3FadED506d38FabeAFc828C30F9E#code) | [Sourcify](https://repo.sourcify.dev/421614/0x364c1D50910e3FadED506d38FabeAFc828C30F9E) |
+| LiabilityLedger | [0x1F6f…3537](https://explorer.testnet.chain.robinhood.com/address/0x1F6fAfc59FFe60f2d8d779d202be17d8b36b3537#code) | [Sourcify](https://repo.sourcify.dev/421614/0x1F6fAfc59FFe60f2d8d779d202be17d8b36b3537) |
+| ReserveSampler | [0x88ec…5616](https://explorer.testnet.chain.robinhood.com/address/0x88ecb274A5Eb6Dc3310c532b8c94795e65605616#code) | [Sourcify](https://repo.sourcify.dev/421614/0x88ecb274A5Eb6Dc3310c532b8c94795e65605616) |
+| DisputeModule | [0xA755…4f41](https://explorer.testnet.chain.robinhood.com/address/0xA755d7b51Ee9E452dB7de6D87Efca2aCC0834f41#code) | [Sourcify](https://repo.sourcify.dev/421614/0xA755d7b51Ee9E452dB7de6D87Efca2aCC0834f41) |
+| SolvencyOracle | [0xFeD7…8E2f](https://explorer.testnet.chain.robinhood.com/address/0xFeD7650622256e3c4CbC8642D0d4F230224D8E2f#code) | [Sourcify](https://repo.sourcify.dev/421614/0xFeD7650622256e3c4CbC8642D0d4F230224D8E2f) · [Arbiscan](https://sepolia.arbiscan.io/address/0xFeD7650622256e3c4CbC8642D0d4F230224D8E2f) |
+| ExitRight | [0x2726…EfB6](https://explorer.testnet.chain.robinhood.com/address/0x272644a119088A096F7fDBFE76da71fF01C0EfB6#code) | [Sourcify](https://repo.sourcify.dev/421614/0x272644a119088A096F7fDBFE76da71fF01C0EfB6) |
+| GatedPayout | [0xed67…a430](https://explorer.testnet.chain.robinhood.com/address/0xed67EC461D64e42ed1472d3d74cbb32ee143a430#code) | [Sourcify](https://repo.sourcify.dev/421614/0xed67EC461D64e42ed1472d3d74cbb32ee143a430) |
+| MockStockToken (mTSLA) | [0x6606…A248](https://explorer.testnet.chain.robinhood.com/address/0x66069A805d8c96a710B800066FdcEAfdfBcaA248#code) | [Sourcify](https://repo.sourcify.dev/421614/0x66069A805d8c96a710B800066FdcEAfdfBcaA248) |
+| Full address book | [`deployments/robinhoodTestnet.json`](../deployments/robinhoodTestnet.json) | [`deployments/arbitrumSepolia.json`](../deployments/arbitrumSepolia.json) |
+
+| Event | Link |
 |---|---|
-| Robinhood testnet — CustodianRegistry | [0x59Da…D998](https://explorer.testnet.chain.robinhood.com/address/0x59DaBFa5ed05506c130dB72ce78eAFAFFa6DD998#code) |
-| Robinhood — SolvencyOracle (`isSolvent` = true, epoch 1) | [0xa175…4dc8](https://explorer.testnet.chain.robinhood.com/address/0xa175E68aB9439950D1005E187f02CcaB83334dc8#code) |
-| Robinhood — LiabilityLedger | [0x5DB7…2A89](https://explorer.testnet.chain.robinhood.com/address/0x5DB78Bf53c197257EF55945C25229AC25cBF2A89#code) |
-| Robinhood — DisputeModule | [0x4Fa1…653C](https://explorer.testnet.chain.robinhood.com/address/0x4Fa1ac2bA85a5aB4Ee2B9A54c9BEA275Ee2C653C#code) |
-| Robinhood — ExitRight | [0x7757…cc6d](https://explorer.testnet.chain.robinhood.com/address/0x77578143aba958687369c6f181b2B6342ba7cc6d#code) |
-| Robinhood — ReserveSampler | [0xD15a…188D](https://explorer.testnet.chain.robinhood.com/address/0xD15a2BEfe47d56F03e80adD82FCE5b28c5b4188D#code) |
-| Robinhood — GatedPayout | [0xEbD3…A9b3](https://explorer.testnet.chain.robinhood.com/address/0xEbD3EF538daF09153ffC05b38e37e6e822E1A9b3#code) |
-| Robinhood — commitEpoch tx | [0xa3c7…763f](https://explorer.testnet.chain.robinhood.com/tx/0xa3c79d40da287cf5753f791931bbe5f5e2dc4e807f1878e78e2c92618845763f) |
-| Robinhood — full address book | [`deployments/robinhoodTestnet.json`](../deployments/robinhoodTestnet.json) — all 10 contracts verified (`npm run verify:rh`) |
-| Arbitrum Sepolia — SolvencyOracle (`isSolvent` = true, epoch 1) | [0xa175…4dc8](https://repo.sourcify.dev/421614/0xa175E68aB9439950D1005E187f02CcaB83334dc8) · [Arbiscan](https://sepolia.arbiscan.io/address/0xa175E68aB9439950D1005E187f02CcaB83334dc8) |
-| Arbitrum Sepolia — DisputeModule | [0x4Fa1…653C](https://repo.sourcify.dev/421614/0x4Fa1ac2bA85a5aB4Ee2B9A54c9BEA275Ee2C653C) |
-| Arbitrum Sepolia — commitEpoch tx | [0x42d9…925f](https://sepolia.arbiscan.io/tx/0x42d92feb8e211f9ae1882cac78cf0a01616edd67059aa2f740c60f13b079925f) |
-| Arbitrum Sepolia — full address book | [`deployments/arbitrumSepolia.json`](../deployments/arbitrumSepolia.json) — same addresses as Robinhood (identical deployer nonce sequence); all 10 exact-match verified on Sourcify (`npm run verify:sourcify`) |
+| Robinhood — mTSLA epoch 1 `commitEpoch` | [0x1f43…465f](https://explorer.testnet.chain.robinhood.com/tx/0x1f43227849ec6c50b7df6ec4c0368f58253fdbe4355a4eb2ffed8207269f465f) |
+| Arbitrum Sepolia — mTSLA epoch 1 `commitEpoch` (same root as Robinhood) | [0x9bc4…127c](https://sepolia.arbiscan.io/tx/0x9bc4ae6e3c458a2a67b2bc80cc8f6e44b5364ef2b1db4e5a8bba4ef72026127c) |
+| Robinhood — USDG epoch 1 `commitEpoch` (80 USDG book, reserves 200 USDG) | [0x42a4…1562](https://explorer.testnet.chain.robinhood.com/tx/0x42a4b41f6cf511e4f9631dd49ee6f9492a0c72377b5ad9bef29a8c6f54911562) |
+| Robinhood — ExitRight `postBond` (60 USDG) | [0x5956…6c40](https://explorer.testnet.chain.robinhood.com/tx/0x5956e7386986c47e0377150204bf7ca97c33d5a28c514dbd1cad8ef776d40c66) |
+| Robinhood — ExitRight `openClaim` #0 (demo user, 100 mTSLA) | [0xb1dc…b297](https://explorer.testnet.chain.robinhood.com/tx/0xb1dc7b713cbd07fdaaaaf2fd5599cb706cee9fd2c7e1bb3568702810ef65b297) |
+| Robinhood — ExitRight `settle` #0 (operator) | [0x8fec…e2e9](https://explorer.testnet.chain.robinhood.com/tx/0x8fec3e59a1824b8d09da32529f27454a2c56e1344ecc5d56c18708ce8679e2e9) |
+| ExitRight record | [`deployments/robinhoodTestnet.exitright.json`](../deployments/robinhoodTestnet.exitright.json) |
+| Scheduled re-publishing | [Ops epoch workflow](https://github.com/Assassin859/ReserveProof/actions/workflows/ops-epoch.yml) (every 3 days) |
 | Demo video | _TODO_ |
 | Repo | https://github.com/Assassin859/ReserveProof |
 
+## Security review
+
+| ID | Finding | Status |
+|---|---|---|
+| FIFO-1 | The challenge queue stored bare addresses. When a user's answered challenge was followed by a new one, the stale queue slot pointed at the fresh challenge, so its later deadline could mask an older overdue challenge behind it and keep the oracle reporting solvent. | **Fixed** — queue entries carry a per-challenge sequence number and only count while `open && seq` matches ([regression test](../test/zz_poc_review.ts), "FIFO-1"). Deployed in the current testnet contracts. |
+
+Merkle-sum verification is property-tested with Foundry fuzzing in CI ([`test/foundry/MerkleSumFuzz.t.sol`](../test/foundry/MerkleSumFuzz.t.sol)).
+
 ## Residual risks (one-liner for judges)
 
-Flash-borrowed reserves across the full sample window, ExitRight bond ≠ full insurance, per-chain allocation ≠ global 100% coverage — documented in README.
+Flash-borrowed reserves across the full sample window, ExitRight bond ≠ full insurance, per-chain allocation ≠ global 100% coverage, and USDG proofs verify only on their home chain (leaves bind the local token address) — documented in README.

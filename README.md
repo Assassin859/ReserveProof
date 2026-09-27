@@ -1,5 +1,8 @@
 # ReserveProof
 
+[![CI](https://github.com/Assassin859/ReserveProof/actions/workflows/ci.yml/badge.svg)](https://github.com/Assassin859/ReserveProof/actions/workflows/ci.yml)
+[![Ops epoch](https://github.com/Assassin859/ReserveProof/actions/workflows/ops-epoch.yml/badge.svg)](https://github.com/Assassin859/ReserveProof/actions/workflows/ops-epoch.yml)
+
 Open-source proof of reserves and proof of exit for custodians of **USDG** and **Robinhood Stock Tokens**.
 
 - On-chain reserve reads (multi-sample + live balance)
@@ -11,10 +14,37 @@ See [docs/technical-spec.md](docs/technical-spec.md) for the full design.
 
 Hackathon packet: [docs/SUBMISSION.md](docs/SUBMISSION.md) · [docs/VERIFY.md](docs/VERIFY.md)
 
+## How it works
+
+```mermaid
+flowchart LR
+  subgraph custodian [Custodian operator]
+    book[Liability book CSV] --> tree[Merkle-sum tree]
+    tree -->|"commitEpoch: root, total, EIP-712 sig"| ledger[LiabilityLedger]
+  end
+  reserves[Reserve wallets] -->|"recordSample: min over blocks"| sampler[ReserveSampler]
+  ledger --> oracle[SolvencyOracle]
+  sampler --> oracle
+  disputes[DisputeModule] -->|"open challenge = DISPUTED"| oracle
+  exit[ExitRight] -->|"unpaid claim = EXIT_DEFAULT"| oracle
+  oracle -->|"isSolvent / status"| apps[GatedPayout, GatedLend, any integrator]
+  user[User] -->|"rebuild tree, verify leaf"| ledger
+  user -->|"challenge or fraud proof"| disputes
+  user -->|"openClaim with leaf proof"| exit
+```
+
+1. **The custodian publishes** a sorted Merkle-sum root of what it owes per asset and per epoch, signed with a chain-agnostic EIP-712 commitment.
+2. **Anyone samples reserves.** `ReserveSampler` records the reserve wallets' balances at several distinct blocks, and the oracle takes `min(samples, live balance)` against 103% of the allocation.
+3. **The oracle answers** `isSolvent(custodianId, asset)` with a reason code (OK, STALE, DISPUTED, LIVE_SHORT, MULTIPLIER_DRIFT, EXIT_DEFAULT, …). It fails closed on anything it can't prove.
+4. **Users verify** that their leaf is in the committed root. The Kopi UI rebuilds the tree in the browser.
+5. **Anyone disputes.** Unanswered inclusion challenges, signed-statement mismatches and equivocation flip the oracle to DISPUTED.
+6. **ExitRight** lets a user with a leaf proof open a bonded withdrawal claim. If the operator doesn't `settle` in time, the bond is slashed to the user and the asset is marked EXIT_DEFAULT.
+
 ## Stack
 
 - Solidity 0.8.24
-- Hardhat (compile / test) — Foundry layout is present; `forge` may be blocked by Windows Application Control on some machines
+- Hardhat (compile / test)
+- **Fuzzed with Foundry:** `forge test` runs property tests on `MerkleSumVerifier` (2–16 leaf trees; honest proofs verify; tampered amounts, siblings, depth, leaf count, user, epoch or asset fail). CI runs both suites.
 - OpenZeppelin Contracts 5.1.0
 - Next.js + wagmi + viem demo UI (`packages/web`)
 
@@ -29,12 +59,19 @@ npm run build
 ## Kopi Wallet UI
 
 `npm run demo:web` → http://localhost:3000. The UI opens on the live **Robinhood testnet** deployment
-(switch to **Arbitrum Sepolia** or **Local Hardhat** in the header). Scenes 1–3 run against testnet,
-including inclusion verification with a bundled sample proof. Set `NEXT_PUBLIC_DEFAULT_NETWORK=localhost`
-to open on the local node instead.
+(switch to **Arbitrum Sepolia** or **Local Hardhat** in the header). The header shows mTSLA and USDG
+solvency side by side. Set `NEXT_PUBLIC_DEFAULT_NETWORK=localhost` to open on the local node instead.
 
-After redeploying or changing contracts, run `npm run web:sync` to refresh the UI's ABIs, testnet
-address books, and sample proofs.
+On testnet:
+
+- **Scene 3, Verify my balance:** enter an address (or press *Try demo user*). The browser rebuilds the
+  Merkle-sum tree from the published book for the latest on-chain epoch, shows your leaf and proof path,
+  and checks the computed root against the committed one. Pasting a CLI proof JSON is under *Advanced*.
+- **Scene 8, ExitRight:** live bond, in-flight bond, claim count and the recorded claim-and-settle
+  transactions on Robinhood.
+
+After redeploying, publishing or changing contracts, run `npm run web:sync` to refresh the UI's ABIs,
+testnet address books, liability books and ExitRight record.
 
 ## Local Kopi Wallet demo (no testnet gas)
 
@@ -43,19 +80,20 @@ address books, and sample proofs.
 npm run demo:node
 
 # terminal B
-npm run demo:deploy
-npm run demo:cli
-npm run ops:publish
-npm run ops:sample
-npm run demo:web
-# → http://localhost:3000 — pick "Local Hardhat", scenes 1–7
+npm run demo:setup     # deploy → CLI build → publish → sample → evm_snapshot
+npm run demo:web       # → http://localhost:3000, pick "Local Hardhat"
 
 # fail-closed scenes (against the running node)
 SCENE=4 npm run demo:prepare   # drain → payout blocked
 SCENE=5 npm run demo:prepare   # MULTIPLIER_DRIFT
 npm run demo:warp              # or SCENE=6 npm run demo:prepare → STALE
 SCENE=7 npm run demo:prepare   # DISPUTED
+
+npm run demo:reset     # evm_revert to the post-setup snapshot (and re-snapshot)
 ```
+
+The local book (`packages/cli/examples/liabilities.csv`) uses Hardhat accounts #2–#5, so challenges and
+ExitRight claims can be signed locally.
 
 Operator aliases: `ops:publish` (commitEpoch from `out/root.json`), `ops:sample` (recordSample).
 
@@ -92,24 +130,42 @@ Outputs:
 
 | Chain | ID | Notes |
 |---|---|---|
-| Robinhood Chain testnet | 46630 | RPC `https://rpc.testnet.chain.robinhood.com` |
-| Arbitrum Sepolia | 421614 | Dual-chain USDG **allocations** (no bridge) |
+| Robinhood Chain testnet | 46630 | RPC `https://rpc.testnet.chain.robinhood.com`; mTSLA + USDG books, ExitRight live |
+| Arbitrum Sepolia | 421614 | Same contract addresses; mTSLA book (identical root to Robinhood) |
 
 ## Deploy
 
 ```bash
 cp .env.example .env
-# set DEPLOYER_PRIVATE_KEY=…  (needs testnet ETH)
+# set DEPLOYER_PRIVATE_KEY=… (needs testnet ETH) and DEPLOYMENT_SALT=… (same value on every chain)
 
-npm run deploy:rh    # Robinhood — official USDG 0x7E95…802F
-npm run deploy:arb   # Arbitrum Sepolia — official USDG 0xFFC9…0892
+npm run wallets                          # gitignored reserve + demo-user keys (deployments/wallets.local.json)
+RESERVE_WALLET_FUNDING=0 npm run deploy:rh    # Robinhood — official USDG 0x7E95…802F
+RESERVE_WALLET_FUNDING=0 npm run deploy:arb   # Arbitrum Sepolia — official USDG 0xFFC9…0892
+npm run verify:rh                        # Blockscout
+DEPLOYMENT=deployments/arbitrumSepolia.json npm run verify:sourcify
 ```
 
 Address books land in [`deployments/`](deployments/). See [`deployments/README.md`](deployments/README.md).
 
-Faucets: [Robinhood](https://faucet.testnet.chain.robinhood.com/) · [Chainlink Arb Sepolia](https://faucets.chain.link/arbitrum-sepolia)
+Faucets: [Robinhood](https://faucet.testnet.chain.robinhood.com/) · [Paxos USDG](https://faucet.paxos.com/?network=robinhood) · [Chainlink Arb Sepolia](https://faucets.chain.link/arbitrum-sepolia)
 
 Dry-run (no key): `npm run deploy` on the in-process Hardhat network.
+
+## Testnet operations
+
+```bash
+npm run ops:cycle:rh      # build latest+1 from each book, commitEpoch, recordSample, print status
+npm run ops:cycle:arb
+npm run status:rh         # mTSLA + USDG oracle status
+npm run exitright:setup   # post a 60 USDG bond, cap claims at 10 USDG each / 30 USDG in flight
+npm run exitright:demo    # demo user opens a claim, operator settles it in the same run
+```
+
+Books live in [`scripts/books.ts`](scripts/books.ts) (`packages/cli/examples/testnet-*.csv`). The
+[Ops epoch](.github/workflows/ops-epoch.yml) workflow runs the cycle every three days (well inside the
+7-day `maxOracleAge`) and on demand. It needs the `DEPLOYER_PRIVATE_KEY` and `DEPLOYMENT_SALT`
+repository secrets.
 
 ## Residual risks (read before integrating)
 
@@ -118,6 +174,8 @@ Dry-run (no key): `npm run deploy` on the in-process Hardhat network.
 - **Per-chain allocation:** `isSolvent` on one chain means that chain’s **allocation** is covered, not that 100% of global liabilities sit there. Treat “fully backed” as AND across chains in the UI.
 - **Non-ZK omission:** users with a custodian-signed EIP-712 balance statement can prove omission via neighbours. Users with neither inclusion nor a statement cannot.
 - **Issuer-controlled multiplier:** ERC-8056 `uiMultiplier` is controlled by the token issuer; ReserveProof fail-closes on drift until the custodian recommits.
+- **Leaves bind the local token address:** a leaf commits to the asset's address on the chain it is published on. USDG's official addresses differ between Robinhood and Arbitrum, so a USDG inclusion proof only verifies on its home chain, and the testnets publish USDG on Robinhood only. Binding leaves to the cross-chain `assetId` instead is future work.
+- **ExitRight default is permanent:** once any claim is slashed, `exitDefault[custodian][asset]` stays set and the oracle reports EXIT_DEFAULT for that asset for good. Anyone holding a leaf's key can open a claim, which is why the testnet book uses a private demo user rather than public Hardhat keys.
 
 ## License
 
