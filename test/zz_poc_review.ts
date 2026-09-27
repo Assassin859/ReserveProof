@@ -792,6 +792,53 @@ describe("zz_poc_review — challenge grief / assetId / overdue", function () {
     expect(status.ok).to.equal(true);
   });
 
+  it("FIFO-1: stale queue slot of a re-challenging user cannot mask an overdue challenge", async function () {
+    const f = await deployFixture();
+    const leaves = twoLeaves(f.userA.address, f.userB.address);
+    const { proofs, asset } = await commitAndSample(f, leaves);
+    const sign = (user: string, amount: bigint) =>
+      signBalanceStatement(f.disputes, f.operator, f.custodianId, asset, 1, user, amount);
+    const proofOf = (user: string) => proofs.get(user.toLowerCase())!;
+    for (const u of [f.userB, f.userC]) await approveChallengeBond(f, u);
+    await f.usdg.connect(f.userA).approve(await f.disputes.getAddress(), CHALLENGE_BOND * 2n);
+
+    // q[0] = B (stays open for now)
+    await f.disputes
+      .connect(f.userB)
+      .challengeInclusion(f.custodianId, asset, 1, f.userB.address, leaves[1].amount, await sign(f.userB.address, leaves[1].amount));
+    // q[1] = A, answered immediately → A's slot is closed but head stays on B
+    await f.disputes
+      .connect(f.userA)
+      .challengeInclusion(f.custodianId, asset, 1, f.userA.address, leaves[0].amount, await sign(f.userA.address, leaves[0].amount));
+    await f.disputes.connect(f.operator).answerInclusion(f.custodianId, asset, f.userA.address, proofOf(f.userA.address));
+    // q[2] = C (never answered; this is the one that must go overdue)
+    const cStated = ethers.parseEther("42");
+    await f.disputes
+      .connect(f.userC)
+      .challengeInclusion(f.custodianId, asset, 1, f.userC.address, cStated, await sign(f.userC.address, cStated));
+    // q[3] = A again, with a later deadline than C
+    await ethers.provider.send("evm_increaseTime", [600]);
+    await ethers.provider.send("evm_mine", []);
+    const aStated2 = leaves[0].amount + 1n;
+    await f.disputes
+      .connect(f.userA)
+      .challengeInclusion(f.custodianId, asset, 1, f.userA.address, aStated2, await sign(f.userA.address, aStated2));
+
+    // Answer B → head advances. It must skip A's stale q[1] and land on C's q[2].
+    await f.disputes.connect(f.operator).answerInclusion(f.custodianId, asset, f.userB.address, proofOf(f.userB.address));
+    expect(await f.disputes.challengeHead(f.custodianId, asset)).to.equal(2n);
+    expect(await f.disputes.openChallengeCount(f.custodianId, asset)).to.equal(2n);
+
+    // Past C's deadline, still before A's second deadline.
+    await ethers.provider.send("evm_increaseTime", [CHALLENGE_WINDOW - 500]);
+    await ethers.provider.send("evm_mine", []);
+
+    expect(await f.disputes.hasOverdueChallenge(f.custodianId, asset)).to.equal(true);
+    const status = await f.oracle.status(f.custodianId, asset);
+    expect(status.ok).to.equal(false);
+    expect(status.reason).to.equal(3); // DISPUTED
+  });
+
   it("no challenge cap — more than 32 open challenges allowed", async function () {
     const f = await deployFixture();
     const asset = await f.stock.getAddress();

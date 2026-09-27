@@ -49,6 +49,14 @@ contract DisputeModule is EIP712 {
         bool open;
         bool bonded; // true while bond held for this challenge
         bytes32 stmtHash;
+        uint64 seq;
+    }
+
+    /// @dev A user can re-challenge after closing, leaving an older entry for the same address
+    ///      in the queue; `seq` ties each entry to exactly one challenge so stale slots are skipped.
+    struct QueueEntry {
+        address user;
+        uint64 seq;
     }
 
     mapping(bytes32 => mapping(address => mapping(address => Dispute))) public disputes;
@@ -56,9 +64,10 @@ contract DisputeModule is EIP712 {
     mapping(bytes32 => mapping(address => bool)) public equivocationPermanent;
 
     mapping(bytes32 => mapping(address => mapping(address => Challenge))) public challenges;
-    /// @dev Append-only FIFO of challengers; head skips closed entries.
-    mapping(bytes32 => mapping(address => address[])) internal _challengeQueue;
+    /// @dev Append-only FIFO of challenges; head skips closed or superseded entries.
+    mapping(bytes32 => mapping(address => QueueEntry[])) internal _challengeQueue;
     mapping(bytes32 => mapping(address => uint256)) public challengeHead;
+    uint64 public challengeSeq;
 
     mapping(bytes32 => bool) public usedStatements;
     mapping(bytes32 => bool) public usedEvidence;
@@ -122,14 +131,12 @@ contract DisputeModule is EIP712 {
 
     /// @notice O(1): insolvent if the FIFO head challenge is past its deadline.
     function hasOverdueChallenge(bytes32 custodianId, address asset) public view returns (bool) {
-        address[] storage q = _challengeQueue[custodianId][asset];
+        QueueEntry[] storage q = _challengeQueue[custodianId][asset];
         uint256 head = challengeHead[custodianId][asset];
-        if (head >= q.length) return false;
-        Challenge storage c = challenges[custodianId][asset][q[head]];
-        // Head should be open after write-path advances; skip closed defensively.
+        // Head should be live after write-path advances; skip dead entries defensively.
         while (head < q.length) {
-            c = challenges[custodianId][asset][q[head]];
-            if (c.open) return block.timestamp > c.deadline;
+            Challenge storage c = challenges[custodianId][asset][q[head].user];
+            if (_isLive(c, q[head])) return block.timestamp > c.deadline;
             head++;
         }
         return false;
@@ -140,11 +147,11 @@ contract DisputeModule is EIP712 {
     }
 
     function openChallengeCount(bytes32 custodianId, address asset) external view returns (uint256) {
-        address[] storage q = _challengeQueue[custodianId][asset];
+        QueueEntry[] storage q = _challengeQueue[custodianId][asset];
         uint256 head = challengeHead[custodianId][asset];
         uint256 n;
         for (uint256 i = head; i < q.length; i++) {
-            if (challenges[custodianId][asset][q[i]].open) n++;
+            if (_isLive(challenges[custodianId][asset][q[i].user], q[i])) n++;
         }
         return n;
     }
@@ -312,7 +319,8 @@ contract DisputeModule is EIP712 {
 
         bondToken.safeTransferFrom(msg.sender, address(this), challengeBond);
 
-        _challengeQueue[custodianId][asset].push(user);
+        uint64 seq = ++challengeSeq;
+        _challengeQueue[custodianId][asset].push(QueueEntry({user: user, seq: seq}));
 
         uint64 deadline = uint64(block.timestamp) + challengeWindow;
         challenges[custodianId][asset][user] = Challenge({
@@ -321,7 +329,8 @@ contract DisputeModule is EIP712 {
             deadline: deadline,
             open: true,
             bonded: true,
-            stmtHash: stmtHash
+            stmtHash: stmtHash,
+            seq: seq
         });
         emit ChallengeOpened(custodianId, asset, user, epochId, deadline);
     }
@@ -439,12 +448,12 @@ contract DisputeModule is EIP712 {
     }
 
     function _settleAllOpenChallenges(bytes32 custodianId, address asset) internal {
-        address[] storage q = _challengeQueue[custodianId][asset];
+        QueueEntry[] storage q = _challengeQueue[custodianId][asset];
         uint256 head = challengeHead[custodianId][asset];
         for (uint256 i = head; i < q.length; i++) {
-            address user = q[i];
+            address user = q[i].user;
             Challenge storage c = challenges[custodianId][asset][user];
-            if (c.open) {
+            if (_isLive(c, q[i])) {
                 c.open = false;
                 if (c.bonded) {
                     c.bonded = false;
@@ -456,12 +465,16 @@ contract DisputeModule is EIP712 {
     }
 
     function _advanceHead(bytes32 custodianId, address asset) internal {
-        address[] storage q = _challengeQueue[custodianId][asset];
+        QueueEntry[] storage q = _challengeQueue[custodianId][asset];
         uint256 head = challengeHead[custodianId][asset];
-        while (head < q.length && !challenges[custodianId][asset][q[head]].open) {
+        while (head < q.length && !_isLive(challenges[custodianId][asset][q[head].user], q[head])) {
             head++;
         }
         challengeHead[custodianId][asset] = head;
+    }
+
+    function _isLive(Challenge storage c, QueueEntry storage e) internal view returns (bool) {
+        return c.open && c.seq == e.seq;
     }
 
     function _assertOmission(
