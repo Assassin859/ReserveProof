@@ -7,7 +7,7 @@
     "build": "hardhat compile",
     "test": "hardhat test",
     "clean": "hardhat clean",
-    "abi:export": "hardhat compile && ts-node scripts/export-abis.ts",
+    "web:sync": "hardhat compile && ts-node scripts/sync-web.ts",
     "cli:build": "ts-node packages/cli/src/index.ts build",
     "deploy": "hardhat run scripts/deploy.ts",
     "deploy:rh": "hardhat run scripts/deploy.ts --network robinhoodTestnet",

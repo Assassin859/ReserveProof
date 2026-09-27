@@ -18,6 +18,9 @@ import {
 import { verifyInclusion, type ProofNode } from "../lib/merkle";
 import { reasonLabel } from "../lib/reasons";
 import { SCENES, type Deployment } from "../lib/types";
+import { NETWORKS, NETWORK_KEYS, defaultNetwork, type NetworkKey } from "../lib/deployments";
+
+type ChainId = 46630 | 421614 | 31337;
 
 function short(addr?: string) {
   if (!addr) return "—";
@@ -25,6 +28,7 @@ function short(addr?: string) {
 }
 
 export function KopiApp() {
+  const [network, setNetwork] = useState<NetworkKey>(defaultNetwork);
   const [dep, setDep] = useState<Deployment | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [scene, setScene] = useState(1);
@@ -32,12 +36,22 @@ export function KopiApp() {
   const [verifyMsg, setVerifyMsg] = useState<string | null>(null);
   const [actionLog, setActionLog] = useState<string | null>(null);
 
+  const net = NETWORKS[network];
+  const isLocal = network === "localhost";
+  const chainId = dep?.chainId as ChainId | undefined;
+
   const { address, isConnected } = useAccount();
   const { connect, connectors } = useConnect();
-  const publicClient = usePublicClient();
+  const publicClient = usePublicClient({ chainId });
   const { writeContractAsync } = useWriteContract();
 
   const refreshDep = useCallback(async () => {
+    if (net.deployment) {
+      setDep(net.deployment);
+      setLoadError(null);
+      return;
+    }
+    setDep(null);
     try {
       const res = await fetch("/api/deployment");
       const data = await res.json();
@@ -47,7 +61,7 @@ export function KopiApp() {
     } catch (e) {
       setLoadError((e as Error).message);
     }
-  }, []);
+  }, [net]);
 
   useEffect(() => {
     void refreshDep();
@@ -64,6 +78,7 @@ export function KopiApp() {
     address: oracle,
     abi: solvencyOracleAbi,
     functionName: "status",
+    chainId,
     args: custodianId && asset ? [custodianId, asset] : undefined,
     query: { enabled: Boolean(oracle && custodianId && asset), refetchInterval: 4000 },
   });
@@ -72,6 +87,7 @@ export function KopiApp() {
     address: ledger,
     abi: liabilityLedgerAbi,
     functionName: "latestEpochId",
+    chainId,
     args: custodianId && asset ? [custodianId, asset] : undefined,
     query: { enabled: Boolean(ledger && custodianId && asset) },
   });
@@ -80,6 +96,7 @@ export function KopiApp() {
     address: ledger,
     abi: liabilityLedgerAbi,
     functionName: "getEpoch",
+    chainId,
     args:
       custodianId && asset && epochId
         ? [custodianId, asset, epochId]
@@ -202,13 +219,14 @@ export function KopiApp() {
     if (!isConnected) {
       const c = connectors[0];
       if (c) connect({ connector: c });
-      setActionLog("Connect a wallet (Hardhat account) then retry payout.");
+      setActionLog(`Connect a wallet on ${net.label}, then retry payout.`);
       return;
     }
     try {
       await writeContractAsync({
         address: gated,
         abi: gatedPayoutAbi,
+        chainId,
         functionName: "payout",
         args: [address as Address, BigInt(1)],
       });
@@ -234,9 +252,25 @@ export function KopiApp() {
           </p>
         </div>
         <div className="status-panel">
+          <div className="netswitch" role="group" aria-label="Network">
+            {NETWORK_KEYS.map((k) => (
+              <button
+                key={k}
+                type="button"
+                className={network === k ? "step active" : "step"}
+                onClick={() => {
+                  setNetwork(k);
+                  setActionLog(null);
+                  setVerifyMsg(null);
+                }}
+              >
+                {NETWORKS[k].label}
+              </button>
+            ))}
+          </div>
           <div className="stat">
             <span className="label">Network</span>
-            <span className="value">{dep?.network ?? "…"} · {dep?.chainId ?? "—"}</span>
+            <span className="value">{dep ? `${net.label} · ${dep.chainId}` : "…"}</span>
           </div>
           <div className="stat">
             <span className="label">Custodian</span>
@@ -254,7 +288,15 @@ export function KopiApp() {
           </div>
           <div className="stat wide">
             <span className="label">Oracle</span>
-            <span className="value mono">{short(oracle)}</span>
+            <span className="value mono">
+              {net.explorer && oracle ? (
+                <a href={`${net.explorer}/address/${oracle}`} target="_blank" rel="noreferrer">
+                  {short(oracle)} ↗
+                </a>
+              ) : (
+                short(oracle)
+              )}
+            </span>
           </div>
           <div className="stat wide">
             <span className="label">Asset</span>
@@ -269,6 +311,13 @@ export function KopiApp() {
       {loadError && (
         <div className="banner warn">
           {loadError} Start Hardhat node, then <code>npm run demo:deploy</code>.
+        </div>
+      )}
+
+      {!isLocal && scene >= 4 && (
+        <div className="banner warn">
+          Scenes 4–7 change chain state (drain, multiplier, time warp, dispute), so they are scripted
+          against <strong>Local Hardhat</strong>. On {net.label} this panel shows the live status.
         </div>
       )}
 
@@ -342,9 +391,20 @@ export function KopiApp() {
                 placeholder='{"user":"0x…","amount":"…","proof":[{...}]}'
               />
             </label>
-            <button type="button" className="primary" onClick={() => void runVerify()}>
-              Verify inclusion
-            </button>
+            <div className="row">
+              {net.sampleProof ? (
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => setProofText(JSON.stringify(net.sampleProof, null, 2))}
+                >
+                  Load sample proof
+                </button>
+              ) : null}
+              <button type="button" className="primary" onClick={() => void runVerify()}>
+                Verify inclusion
+              </button>
+            </div>
             {verifyMsg && <p className="result">{verifyMsg}</p>}
           </div>
         )}

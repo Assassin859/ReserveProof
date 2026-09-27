@@ -112,6 +112,33 @@ code {
   grid-column: 1 / -1;
 }
 
+.netswitch {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.4rem;
+}
+
+.netswitch .step {
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+.value a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.value a:hover {
+  text-decoration: underline;
+}
+
+.row {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
 .label {
   font-size: 0.68rem;
   text-transform: uppercase;

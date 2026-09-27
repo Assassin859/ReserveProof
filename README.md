@@ -26,6 +26,16 @@ npm test
 npm run build
 ```
 
+## Kopi Wallet UI
+
+`npm run demo:web` → http://localhost:3000. The UI opens on the live **Robinhood testnet** deployment
+(switch to **Arbitrum Sepolia** or **Local Hardhat** in the header). Scenes 1–3 run against testnet,
+including inclusion verification with a bundled sample proof. Set `NEXT_PUBLIC_DEFAULT_NETWORK=localhost`
+to open on the local node instead.
+
+After redeploying or changing contracts, run `npm run web:sync` to refresh the UI's ABIs, testnet
+address books, and sample proofs.
+
 ## Local Kopi Wallet demo (no testnet gas)
 
 ```bash
@@ -38,7 +48,7 @@ npm run demo:cli
 npm run ops:publish
 npm run ops:sample
 npm run demo:web
-# → http://localhost:3000 — scenes 1–7
+# → http://localhost:3000 — pick "Local Hardhat", scenes 1–7
 
 # fail-closed scenes (against the running node)
 SCENE=4 npm run demo:prepare   # drain → payout blocked
