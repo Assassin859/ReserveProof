@@ -34,7 +34,7 @@ flowchart LR
 ```
 
 1. **The custodian publishes** a sorted Merkle-sum root of what it owes per asset and per epoch, signed with a chain-agnostic EIP-712 commitment.
-2. **Anyone samples reserves.** `ReserveSampler` records the reserve wallets' balances at several distinct blocks, and the oracle takes `min(samples, live balance)` against 103% of the allocation.
+2. **The operator samples reserves.** `ReserveSampler.recordSample` is operator-gated; it records the reserve wallets' balances at several distinct blocks, and the oracle takes `min(samples, live balance)` against 103% of the allocation.
 3. **The oracle answers** `isSolvent(custodianId, asset)` with a reason code (OK, STALE, DISPUTED, LIVE_SHORT, MULTIPLIER_DRIFT, EXIT_DEFAULT, …). It fails closed on anything it can't prove.
 4. **Users verify** that their leaf is in the committed root. The Kopi UI rebuilds the tree in the browser.
 5. **Anyone disputes.** Unanswered inclusion challenges, signed-statement mismatches and equivocation flip the oracle to DISPUTED.
@@ -44,7 +44,7 @@ flowchart LR
 
 - Solidity 0.8.24
 - Hardhat (compile / test)
-- **Fuzzed with Foundry:** `forge test` runs property tests on `MerkleSumVerifier` (2–16 leaf trees; honest proofs verify; tampered amounts, siblings, depth, leaf count, user, epoch or asset fail). CI runs both suites.
+- **Fuzzed with Foundry:** `forge test` runs property tests on `MerkleSumVerifier` (2–16 leaf trees; honest proofs verify; tampered amounts, siblings, depth, leaf count, user, epoch or asset fail). CI runs both suites. Run `forge install foundry-rs/forge-std --no-git` once before `forge test`.
 - OpenZeppelin Contracts 5.1.0
 - Next.js + wagmi + viem demo UI (`packages/web`)
 
@@ -54,6 +54,10 @@ flowchart LR
 npm install
 npm test
 npm run build
+
+# Foundry fuzz tests (one-time forge-std install into the gitignored lib/)
+forge install foundry-rs/forge-std --no-git
+forge test
 ```
 
 ## Kopi Wallet UI
@@ -142,7 +146,7 @@ cp .env.example .env
 npm run wallets                          # gitignored reserve + demo-user keys (deployments/wallets.local.json)
 RESERVE_WALLET_FUNDING=0 npm run deploy:rh    # Robinhood — official USDG 0x7E95…802F
 RESERVE_WALLET_FUNDING=0 npm run deploy:arb   # Arbitrum Sepolia — official USDG 0xFFC9…0892
-npm run verify:rh                        # Blockscout
+npm run verify:rh                        # Blockscout (FORCE=1 if a byte-identical redeploy shows as a "twin")
 DEPLOYMENT=deployments/arbitrumSepolia.json npm run verify:sourcify
 ```
 
@@ -167,9 +171,15 @@ Books live in [`scripts/books.ts`](scripts/books.ts) (`packages/cli/examples/tes
 7-day `maxOracleAge`) and on demand. It needs the `DEPLOYER_PRIVATE_KEY` and `DEPLOYMENT_SALT`
 repository secrets.
 
+**Settle every demo claim in the same session.** A claim left unsettled past its 72h payout window can
+be slashed by anyone, which permanently flips that asset to EXIT_DEFAULT. `exitright:demo` opens and
+settles in one run; `status:rh` lists any unsettled claim with its deadline.
+
 ## Residual risks (read before integrating)
 
 - **Flash-loan / borrowed reserves:** samples use `min` across distinct `arbBlockNumber` values plus a time gap, then `min(sampleMin, liveBalance)`. Capital borrowed for the *entire* sampling window can still inflate reserves — documented, not fully eliminated.
+- **Operator-only sampling:** only the custodian's operator can call `recordSample`, so it chooses when samples land. The oracle's `min(sampleMin, liveBalance)` means reserves must still be present when an integrator reads `isSolvent`. Permissionless sampling is future work.
+- **Equivocation settle loop (SETTLE-1):** `openEquivocationDispute` settles every live challenge in one loop. At roughly 909 open challenges it exceeds block gas, so an equivocation proof can't land while that many are live. Each challenge costs a 1 USDG bond from a distinct address, and overdue challenges flip the oracle to DISPUTED anyway. Paginated settlement is future work.
 - **ExitRight bond ≠ full insurance:** the USDG bond is a deterrent with per-claim and in-flight caps. A bank run of many claims is an intentional stress case; unpaid claims beyond the bond still mark exit default.
 - **Per-chain allocation:** `isSolvent` on one chain means that chain’s **allocation** is covered, not that 100% of global liabilities sit there. Treat “fully backed” as AND across chains in the UI.
 - **Non-ZK omission:** users with a custodian-signed EIP-712 balance statement can prove omission via neighbours. Users with neither inclusion nor a statement cannot.
