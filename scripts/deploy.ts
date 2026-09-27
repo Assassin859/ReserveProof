@@ -36,18 +36,27 @@ async function main() {
   const signers = await ethers.getSigners();
   const deployer = signers[0];
   let reserveWallet = signers[1];
-  // Single-key testnets: derive an ephemeral reserve wallet and fund it.
+  // Single-key testnets: reuse the reserve key from make-wallets, else create an ephemeral one.
   let ephemeralKey: string | undefined;
   if (!reserveWallet) {
-    const funded = ethers.Wallet.createRandom().connect(ethers.provider);
-    ephemeralKey = funded.privateKey;
-    const fundTx = await deployer.sendTransaction({
-      to: funded.address,
-      value: ethers.parseEther(process.env.RESERVE_WALLET_FUNDING || "0.0005"),
-    });
-    await fundTx.wait();
-    reserveWallet = funded as typeof deployer;
-    console.log(`Ephemeral reserve wallet funded: ${reserveWallet.address}`);
+    const walletsFile = path.join(__dirname, "..", "deployments", "wallets.local.json");
+    let wallet: InstanceType<typeof ethers.Wallet>;
+    if (fs.existsSync(walletsFile)) {
+      const doc = JSON.parse(fs.readFileSync(walletsFile, "utf8"));
+      wallet = new ethers.Wallet(doc.reserve.privateKey, ethers.provider);
+      console.log(`Reserve wallet from ${walletsFile}: ${wallet.address}`);
+    } else {
+      const random = ethers.Wallet.createRandom();
+      wallet = new ethers.Wallet(random.privateKey, ethers.provider);
+      ephemeralKey = random.privateKey;
+    }
+    // The reserve wallet only signs an off-chain ownership proof, so gas is optional.
+    const funding = ethers.parseEther(process.env.RESERVE_WALLET_FUNDING || "0.0005");
+    if (funding > 0n) {
+      await (await deployer.sendTransaction({ to: wallet.address, value: funding })).wait();
+      console.log(`Reserve wallet funded with ${ethers.formatEther(funding)} ETH`);
+    }
+    reserveWallet = wallet as unknown as typeof deployer;
   }
   const network = await ethers.provider.getNetwork();
   const networkName = hre.network.name;
@@ -162,10 +171,11 @@ async function main() {
   await (await stock.mint(reserveWallet.address, seedAmount)).wait();
   console.log(`Minted ${ethers.formatEther(seedAmount)} mTSLA to reserve wallet`);
 
-  // Dual-chain USDG allowlist when on RH / Arb Sepolia; else local-only.
-  const dualChains = [46630, 421614];
-  const usdgAllocChains =
-    chainId === 46630 || chainId === 421614 ? dualChains : [chainId];
+  // Leaves bind the local token address and USDG addresses differ per chain, so a USDG
+  // root cannot be shared across chains; default to home-chain only (USDG_ALLOC_CHAINS overrides).
+  const usdgAllocChains = process.env.USDG_ALLOC_CHAINS
+    ? process.env.USDG_ALLOC_CHAINS.split(",").map((s) => Number(s.trim()))
+    : [chainId];
   const stockAllocChains = [chainId];
 
   await (

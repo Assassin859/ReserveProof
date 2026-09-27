@@ -1,6 +1,7 @@
 /**
- * Build CLI merkle outputs for the localhost MockStockToken asset.
+ * Build CLI merkle outputs for a deployment's mock stock or USDG asset.
  * Usage: npx ts-node scripts/demo-cli-build.ts
+ * Env: DEPLOYMENT (default deployments/localhost.json), ASSET=stock|usdg, CSV, EPOCH, OUT
  */
 import { spawnSync } from "child_process";
 import * as fs from "fs";
@@ -14,7 +15,12 @@ if (!fs.existsSync(depPath)) {
   process.exit(1);
 }
 const dep = JSON.parse(fs.readFileSync(depPath, "utf8"));
-const asset = dep.contracts.MockStockToken;
+const assetKind = (process.env.ASSET || "stock").toLowerCase();
+if (assetKind !== "stock" && assetKind !== "usdg") {
+  console.error(`ASSET must be "stock" or "usdg" (got "${assetKind}")`);
+  process.exit(1);
+}
+const asset = assetKind === "usdg" ? dep.contracts.USDG : dep.contracts.MockStockToken;
 const epoch = process.env.EPOCH || "1";
 const out = process.env.OUT || "./out";
 const csv = process.env.CSV || "packages/cli/examples/liabilities.csv";
@@ -34,6 +40,6 @@ const args = [
   out,
 ];
 
-console.log(`Building tree for asset ${asset} epoch ${epoch}`);
+console.log(`Building ${assetKind} tree for asset ${asset} epoch ${epoch} from ${csv}`);
 const r = spawnSync("npx", ["ts-node", ...args], { stdio: "inherit", shell: true });
 process.exit(r.status ?? 1);

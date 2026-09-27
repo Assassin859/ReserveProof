@@ -1,9 +1,10 @@
 /**
- * Copy compiled ABIs, testnet deployment books, and a sample inclusion proof into packages/web
- * so the UI can be built and hosted without reading the repo root at runtime.
+ * Copy compiled ABIs, testnet deployment books, liability books and the ExitRight record into
+ * packages/web so the UI can be built and hosted without reading the repo root at runtime.
  */
 import * as fs from "fs";
 import * as path from "path";
+import { BOOKS, readBook, type AssetKind, type BookLeaf } from "./books";
 
 const CONTRACTS = [
   "AssetConfig",
@@ -57,13 +58,41 @@ for (const network of TESTNETS) {
   }
   fs.copyFileSync(src, path.join(depOut, `${network}.json`));
   console.log(`deployment ${network}`);
-
-  const proofsDir = path.join(root, "out", network, "proofs");
-  if (fs.existsSync(proofsDir)) {
-    const first = fs.readdirSync(proofsDir).sort()[0];
-    if (first) {
-      fs.copyFileSync(path.join(proofsDir, first), path.join(depOut, `${network}.proof.json`));
-      console.log(`sample proof ${network}: ${first}`);
-    }
-  }
+  const staleProof = path.join(depOut, `${network}.proof.json`);
+  if (fs.existsSync(staleProof)) fs.rmSync(staleProof);
 }
+
+type NetBooks = {
+  demoUser: string | null;
+  liabilities: Partial<Record<AssetKind, BookLeaf[]>>;
+  exitright: unknown | null;
+};
+
+const walletsFile = path.join(root, "deployments", "wallets.local.json");
+const booksFile = path.join(depOut, "books.json");
+const previous: Record<string, NetBooks> = fs.existsSync(booksFile)
+  ? JSON.parse(fs.readFileSync(booksFile, "utf8"))
+  : {};
+const demoUser: string | null = fs.existsSync(walletsFile)
+  ? JSON.parse(fs.readFileSync(walletsFile, "utf8")).demoUser.address
+  : null;
+
+const books: Record<string, NetBooks> = {};
+for (const [network, assets] of Object.entries(BOOKS)) {
+  const liabilities: NetBooks["liabilities"] = {};
+  for (const [kind, csv] of Object.entries(assets) as [AssetKind, string][]) {
+    liabilities[kind] = readBook(csv);
+  }
+  const exitrightFile = path.join(root, "deployments", `${network}.exitright.json`);
+  books[network] = {
+    demoUser: network === "localhost" ? null : demoUser ?? previous[network]?.demoUser ?? null,
+    liabilities,
+    exitright: fs.existsSync(exitrightFile)
+      ? JSON.parse(fs.readFileSync(exitrightFile, "utf8"))
+      : previous[network]?.exitright ?? null,
+  };
+  console.log(
+    `books ${network}: ${Object.keys(liabilities).join(",")}${books[network].exitright ? " + exitright" : ""}`
+  );
+}
+fs.writeFileSync(booksFile, JSON.stringify(books, null, 2) + "\n");

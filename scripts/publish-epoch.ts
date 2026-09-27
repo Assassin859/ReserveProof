@@ -29,34 +29,36 @@ const EPOCH_COMMITMENT_TYPES = {
   ],
 };
 
-async function main() {
-  const rootPath = path.resolve(process.env.ROOT_JSON || "out/root.json");
-  const depPath = path.resolve(
-    process.env.DEPLOYMENT || `deployments/${hre.network.name}.json`
-  );
+export type RootDoc = {
+  custodianId: string;
+  asset: string;
+  epochId: number;
+  root: string;
+  total: string;
+  leafCount?: number;
+  sorted?: unknown[];
+};
 
-  if (!fs.existsSync(rootPath)) {
-    throw new Error(`Missing ${rootPath} — run npm run cli:build first`);
-  }
-  if (!fs.existsSync(depPath)) {
-    throw new Error(`Missing ${depPath} — run deploy on this network first`);
-  }
-
-  const rootDoc = loadJson(rootPath);
-  const dep = loadJson(depPath);
+export async function publishEpoch(opts: {
+  rootDoc: RootDoc;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  dep: any;
+  allocations?: bigint[];
+  unitMode?: number;
+}): Promise<string> {
+  const { rootDoc, dep } = opts;
   const [operator] = await ethers.getSigners();
 
   const ledger = await ethers.getContractAt("LiabilityLedger", dep.contracts.LiabilityLedger);
   const assetConfig = await ethers.getContractAt("AssetConfig", dep.contracts.AssetConfig);
-  const stock = await ethers.getContractAt("MockStockToken", dep.contracts.MockStockToken);
 
-  const custodianId = rootDoc.custodianId as string;
-  const asset = rootDoc.asset as string;
+  const custodianId = rootDoc.custodianId;
+  const asset = rootDoc.asset;
   const epochId = Number(rootDoc.epochId);
-  const liabilityRoot = rootDoc.root as string;
+  const liabilityRoot = rootDoc.root;
   const totalLiability = BigInt(rootDoc.total);
   const leafCount = Number(rootDoc.leafCount ?? rootDoc.sorted?.length ?? 0);
-  const unitMode = Number(process.env.UNIT_MODE || "0");
+  const unitMode = opts.unitMode ?? 0;
 
   const cfg = await assetConfig.getConfig(custodianId, asset);
   const assetId = (cfg.assetId as string) || dep.assetIds?.stock || ethers.id("TSLA");
@@ -70,8 +72,8 @@ async function main() {
   const chains = rawChains.map((c) => Number(c));
 
   let allocations: bigint[];
-  if (process.env.ALLOCATIONS) {
-    allocations = process.env.ALLOCATIONS.split(",").map((s) => BigInt(s.trim()));
+  if (opts.allocations) {
+    allocations = opts.allocations;
   } else if (chains.length === 1) {
     allocations = [totalLiability];
   } else {
@@ -107,13 +109,17 @@ async function main() {
   });
 
   let multiplier = 0n;
-  try {
-    multiplier = await stock.uiMultiplier();
-  } catch {
-    multiplier = ethers.parseEther("1");
+  if (cfg.isStockToken) {
+    const stock = await ethers.getContractAt("MockStockToken", cfg.token);
+    try {
+      multiplier = await stock.uiMultiplier();
+    } catch {
+      multiplier = ethers.parseEther("1");
+    }
   }
 
   console.log(`Network: ${hre.network.name}`);
+  console.log(`Asset: ${asset} epoch ${epochId}`);
   console.log(`AssetId: ${assetId}`);
   console.log(`Chains: ${chains.map(String).join(",")}`);
   console.log(`Allocations: ${allocations.map(String).join(",")}`);
@@ -134,9 +140,31 @@ async function main() {
   );
   await tx.wait();
   console.log(`commitEpoch tx: ${tx.hash}`);
+  return tx.hash;
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+async function main() {
+  const rootPath = path.resolve(process.env.ROOT_JSON || "out/root.json");
+  const depPath = path.resolve(process.env.DEPLOYMENT || `deployments/${hre.network.name}.json`);
+  if (!fs.existsSync(rootPath)) {
+    throw new Error(`Missing ${rootPath} — run npm run cli:build first`);
+  }
+  if (!fs.existsSync(depPath)) {
+    throw new Error(`Missing ${depPath} — run deploy on this network first`);
+  }
+  await publishEpoch({
+    rootDoc: loadJson(rootPath),
+    dep: loadJson(depPath),
+    allocations: process.env.ALLOCATIONS
+      ? process.env.ALLOCATIONS.split(",").map((s) => BigInt(s.trim()))
+      : undefined,
+    unitMode: Number(process.env.UNIT_MODE || "0"),
+  });
+}
+
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
