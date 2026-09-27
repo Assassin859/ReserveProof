@@ -6,6 +6,7 @@ dotenv.config();
 
 const PRIVATE_KEY = process.env.DEPLOYER_PRIVATE_KEY || process.env.PRIVATE_KEY || "";
 const accounts = PRIVATE_KEY ? [PRIVATE_KEY] : [];
+const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY || "";
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -39,6 +40,41 @@ const config: HardhatUserConfig = {
       chainId: 421614,
       accounts,
     },
+  },
+  etherscan: {
+    apiKey: {
+      // Blockscout ignores the key but hardhat-verify requires a non-empty value.
+      robinhoodTestnet: "blockscout",
+      arbitrumSepolia: ETHERSCAN_API_KEY || "blockscout",
+    },
+    customChains: [
+      {
+        // Arbiscan via Etherscan v2 (per-network keys otherwise hit the retired v1 API);
+        // falls back to keyless Blockscout when no Etherscan key is configured.
+        network: "arbitrumSepolia",
+        chainId: 421614,
+        urls: ETHERSCAN_API_KEY
+          ? {
+              apiURL: "https://api.etherscan.io/v2/api?chainid=421614",
+              browserURL: "https://sepolia.arbiscan.io",
+            }
+          : {
+              apiURL: "https://arbitrum-sepolia.blockscout.com/api",
+              browserURL: "https://arbitrum-sepolia.blockscout.com",
+            },
+      },
+      {
+        network: "robinhoodTestnet",
+        chainId: 46630,
+        urls: {
+          apiURL: "https://explorer.testnet.chain.robinhood.com/api",
+          browserURL: "https://explorer.testnet.chain.robinhood.com",
+        },
+      },
+    ],
+  },
+  sourcify: {
+    enabled: process.env.SOURCIFY === "1",
   },
 };
 

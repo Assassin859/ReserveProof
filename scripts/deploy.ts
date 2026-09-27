@@ -43,7 +43,7 @@ async function main() {
     ephemeralKey = funded.privateKey;
     const fundTx = await deployer.sendTransaction({
       to: funded.address,
-      value: ethers.parseEther("0.005"),
+      value: ethers.parseEther(process.env.RESERVE_WALLET_FUNDING || "0.0005"),
     });
     await fundTx.wait();
     reserveWallet = funded as typeof deployer;

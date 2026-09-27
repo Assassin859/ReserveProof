@@ -59,10 +59,19 @@ npm run demo:web          # http://localhost:3000
 
 | Item | Link |
 |---|---|
-| Robinhood testnet explorer — CustodianRegistry | _TODO — awaiting funded `deploy:rh` (deployer currently 0 balance)_ |
-| Robinhood — SolvencyOracle | _TODO_ |
-| Arbitrum Sepolia — allocation twin | _TODO — awaiting funded `deploy:arb`_ |
-| Verified contract URLs | _TODO_ — see VERIFY.md checklist |
+| Robinhood testnet — CustodianRegistry | [0x59Da…D998](https://explorer.testnet.chain.robinhood.com/address/0x59DaBFa5ed05506c130dB72ce78eAFAFFa6DD998#code) |
+| Robinhood — SolvencyOracle (`isSolvent` = true, epoch 1) | [0xa175…4dc8](https://explorer.testnet.chain.robinhood.com/address/0xa175E68aB9439950D1005E187f02CcaB83334dc8#code) |
+| Robinhood — LiabilityLedger | [0x5DB7…2A89](https://explorer.testnet.chain.robinhood.com/address/0x5DB78Bf53c197257EF55945C25229AC25cBF2A89#code) |
+| Robinhood — DisputeModule | [0x4Fa1…653C](https://explorer.testnet.chain.robinhood.com/address/0x4Fa1ac2bA85a5aB4Ee2B9A54c9BEA275Ee2C653C#code) |
+| Robinhood — ExitRight | [0x7757…cc6d](https://explorer.testnet.chain.robinhood.com/address/0x77578143aba958687369c6f181b2B6342ba7cc6d#code) |
+| Robinhood — ReserveSampler | [0xD15a…188D](https://explorer.testnet.chain.robinhood.com/address/0xD15a2BEfe47d56F03e80adD82FCE5b28c5b4188D#code) |
+| Robinhood — GatedPayout | [0xEbD3…A9b3](https://explorer.testnet.chain.robinhood.com/address/0xEbD3EF538daF09153ffC05b38e37e6e822E1A9b3#code) |
+| Robinhood — commitEpoch tx | [0xa3c7…763f](https://explorer.testnet.chain.robinhood.com/tx/0xa3c79d40da287cf5753f791931bbe5f5e2dc4e807f1878e78e2c92618845763f) |
+| Robinhood — full address book | [`deployments/robinhoodTestnet.json`](../deployments/robinhoodTestnet.json) — all 10 contracts verified (`npm run verify:rh`) |
+| Arbitrum Sepolia — SolvencyOracle (`isSolvent` = true, epoch 1) | [0xa175…4dc8](https://repo.sourcify.dev/421614/0xa175E68aB9439950D1005E187f02CcaB83334dc8) · [Arbiscan](https://sepolia.arbiscan.io/address/0xa175E68aB9439950D1005E187f02CcaB83334dc8) |
+| Arbitrum Sepolia — DisputeModule | [0x4Fa1…653C](https://repo.sourcify.dev/421614/0x4Fa1ac2bA85a5aB4Ee2B9A54c9BEA275Ee2C653C) |
+| Arbitrum Sepolia — commitEpoch tx | [0x42d9…925f](https://sepolia.arbiscan.io/tx/0x42d92feb8e211f9ae1882cac78cf0a01616edd67059aa2f740c60f13b079925f) |
+| Arbitrum Sepolia — full address book | [`deployments/arbitrumSepolia.json`](../deployments/arbitrumSepolia.json) — same addresses as Robinhood (identical deployer nonce sequence); all 10 exact-match verified on Sourcify (`npm run verify:sourcify`) |
 | Demo video | _TODO_ |
 | Repo | https://github.com/Assassin859/ReserveProof |
 
