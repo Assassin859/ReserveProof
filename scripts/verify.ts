@@ -38,12 +38,14 @@ async function main() {
 
   const only = process.env.ONLY?.split(",");
   const delayMs = Number(process.env.VERIFY_DELAY_MS || "5000");
+  // Blockscout reports byte-identical redeploys as verified via a "twin"; FORCE=1 submits anyway.
+  const force = process.env.FORCE === "1";
   for (const [name, address, constructorArguments] of targets) {
     if (only && !only.includes(name)) continue;
     console.log(`\n== ${name} @ ${address}`);
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        await hre.run("verify:verify", { address, constructorArguments });
+        await hre.run("verify:verify", { address, constructorArguments, force });
         break;
       } catch (e) {
         const msg = (e as Error).message;
