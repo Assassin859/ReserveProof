@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  hardhat:
+    name: Hardhat tests + web build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            packages/web/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - name: Web type-check and build
+        working-directory: packages/web
+        run: |
+          npm ci
+          npx tsc --noEmit
+          npm run build
+
+  foundry:
+    name: Foundry fuzz (MerkleSumVerifier)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      # OpenZeppelin is resolved from node_modules.
+      - run: npm ci
+      - uses: foundry-rs/foundry-toolchain@v1
+      - run: forge install foundry-rs/forge-std --no-git
+      - run: forge test -vv

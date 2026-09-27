@@ -8,6 +8,7 @@ coverage.json
 
 # Foundry
 out/
+forge-out/
 cache_forge/
 broadcast/
 /lib/

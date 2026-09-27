@@ -1,0 +1,38 @@
+name: Ops epoch
+
+# Re-publish every liability book and record fresh reserve samples well inside the
+# 7-day maxOracleAge, so the testnet oracles never go STALE.
+on:
+  schedule:
+    - cron: "0 2 */3 * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ops-epoch
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: ${{ matrix.network }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        network: [robinhoodTestnet, arbitrumSepolia]
+    env:
+      DEPLOYER_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+      DEPLOYMENT_SALT: ${{ secrets.DEPLOYMENT_SALT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Check secrets
+        run: |
+          if [ -z "$DEPLOYER_PRIVATE_KEY" ]; then
+            echo "::error::Add the DEPLOYER_PRIVATE_KEY repository secret"; exit 1
+          fi
+      - run: npx hardhat run scripts/ops-cycle.ts --network ${{ matrix.network }}
+      - run: npx hardhat run scripts/status.ts --network ${{ matrix.network }}
