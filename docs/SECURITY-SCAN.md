@@ -9,7 +9,11 @@ Scan date: 2026-09-28 · commit after `SolvencyGuard` / TSLA work · scope: ever
   false positive (storage written through a pointer). Every Medium is either a zero-initialized local
   that is assigned before use, or a tuple field deliberately ignored. Lows are bounded loops and
   hour-scale timestamp windows.
-- **`SolvencyGuard` and `GuardedLendingVault` produced no findings.**
+- **`SolvencyGuard` and `GuardedLendingVault` produced no Slither findings.** Manual review did find one
+  logic issue Slither cannot see (VAULT-1): `withdrawCollateral` was gated even for a borrower with zero
+  debt, so a long-lived failing proof (for example an unresolved dispute) locked collateral that backed
+  nothing. Fixed: the solvency check now applies only while the caller has debt, with regression tests
+  for a 30-day lock and for repay-then-withdraw while insolvent. Both testnet vaults were redeployed.
 - **9 Foundry invariants hold over 2 × 128 runs × 64 calls** (16,384 random calls, 0 unexpected
   reverts with `fail_on_revert = true`) across `DisputeModule`'s challenge queue and `ExitRight`'s
   bond accounting. Deterministic smoke tests prove the handlers reach every path (answer, expire,

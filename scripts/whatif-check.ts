@@ -28,6 +28,10 @@ async function main() {
   const statusData = oracle.interface.encodeFunctionData("status", [dep.custodianId, c.MockStockToken]);
   const payoutData = payout.interface.encodeFunctionData("payout", [dep.reserveWallet, 0]);
   const insolventSel = payout.interface.getError("Insolvent")!.selector;
+  const booksFile = path.resolve("packages/web/src/deployments/books.json");
+  const books = fs.existsSync(booksFile) ? JSON.parse(fs.readFileSync(booksFile, "utf8")) : {};
+  // Same caller as the web simulator: the demo user, never the deployer/operator.
+  const payoutFrom: string = books[net]?.demoUser ?? dep.reserveWallet;
   const now = BigInt((await ethers.provider.getBlock("latest"))!.timestamp);
 
   const overrides = (id: ScenarioId): { state?: object; block?: object } => {
@@ -61,7 +65,7 @@ async function main() {
   };
   const payoutResult = async (o: { state?: object; block?: object }) => {
     try {
-      await call(c.GatedPayout, payoutData, o, dep.deployer);
+      await call(c.GatedPayout, payoutData, o, payoutFrom);
       return "allowed";
     } catch (e) {
       const data = JSON.stringify(e);
@@ -73,11 +77,17 @@ async function main() {
     ? await ethers.getContractAt("GuardedLendingVault", c.GuardedLendingVault)
     : undefined;
   const borrower: string | undefined = dep.vault?.demoBorrower;
-  const vaultProbes: [string, string][] = [];
+  // [name, calldata, staysOpen]: withdrawCollateral is gated only while the borrower has debt.
+  const vaultProbes: [string, string, boolean][] = [];
   if (vault && borrower) {
-    vaultProbes.push(["withdrawCollateral", vault.interface.encodeFunctionData("withdrawCollateral", [1n])]);
+    const debt = await vault.debtOf(borrower);
+    vaultProbes.push([
+      debt > 0n ? "withdrawCollateral(indebted)" : "withdrawCollateral(debt-free)",
+      vault.interface.encodeFunctionData("withdrawCollateral", [1n]),
+      debt === 0n,
+    ]);
     if ((await vault.availableLiquidity()) > 0n) {
-      vaultProbes.push(["borrow", vault.interface.encodeFunctionData("borrow", [1n])]);
+      vaultProbes.push(["borrow", vault.interface.encodeFunctionData("borrow", [1n]), false]);
     }
   }
   const guardSel = vault?.interface.getError("Insolvent")!.selector;
@@ -105,16 +115,18 @@ async function main() {
     let reason: number | string;
     let pay: string;
     let vaultRes: string[] = [];
+    let vaultOk = false;
     try {
       reason = await reasonOf(o);
       pay = await payoutResult(o);
-      vaultRes = await Promise.all(vaultProbes.map(async ([n, d]) => `${n}=${await vaultResult(d, o)}`));
+      const results = await Promise.all(vaultProbes.map(async ([, d]) => vaultResult(d, o)));
+      vaultRes = results.map((r, i) => `${vaultProbes[i][0]}=${r}`);
+      vaultOk = results.every((r, i) => (vaultProbes[i][2] ? r === "allowed" : r === `Insolvent(${want})`));
     } catch (e) {
       reason = `ERR ${(e as Error).message.slice(0, 100)}`;
       pay = "-";
     }
-    const ok =
-      reason === want && pay === "Insolvent" && vaultRes.every((v) => v.endsWith(`=Insolvent(${want})`));
+    const ok = reason === want && pay === "Insolvent" && vaultOk;
     if (!ok) failed++;
     console.log(`${ok ? "PASS" : "FAIL"} ${id}: reason=${reason} (want ${want}) payout=${pay} ${vaultRes.join(" ")}`);
   }

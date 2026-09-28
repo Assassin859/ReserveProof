@@ -88,9 +88,11 @@ type ExitInfo = {
   };
 };
 
+type Verification = { total: number; verified: number; unverified: string[]; unknown: number; checkedAt: string };
+
 type GateResult = "allowed" | string;
 
-type GateRow = { label: string; live: GateResult; sim: GateResult };
+type GateRow = { label: string; live: GateResult; sim: GateResult; staysOpen?: boolean };
 
 type SimResult = {
   id: ScenarioId;
@@ -101,7 +103,8 @@ type SimResult = {
   error?: string;
 };
 
-type GateProbe = { label: string; to: Address; data: Hex; account: Address; abi: Abi };
+/** `staysOpen`: the action is deliberately never gated, so "allowed" under a failing proof is correct. */
+type GateProbe = { label: string; to: Address; data: Hex; account: Address; abi: Abi; staysOpen?: boolean };
 
 const ZERO = BigInt(0);
 const BPS = BigInt(10_000);
@@ -238,6 +241,23 @@ export function KopiApp() {
     void refreshDep();
   }, [refreshDep]);
 
+  // Checked against Blockscout / Sourcify by /api/verified (cached server-side for an hour).
+  const [verification, setVerification] = useState<Verification | null>(null);
+  useEffect(() => {
+    setVerification(null);
+    if (isLocal) return;
+    let cancelled = false;
+    fetch(`/api/verified?network=${network}`)
+      .then((r) => (r.ok ? (r.json() as Promise<Verification>) : null))
+      .then((v) => {
+        if (!cancelled && v) setVerification(v);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [network, isLocal]);
+
   const custodianId = dep?.custodianId;
   const asset = dep?.contracts.MockStockToken;
   const usdg = dep?.contracts.USDG;
@@ -307,6 +327,26 @@ export function KopiApp() {
     query: { enabled: Boolean(sampler && stockArgs), refetchInterval: 30_000 },
   });
 
+  // What the oracle compares against the floor: min(lowest sample this epoch, live balance).
+  const { data: effectiveReserves, refetch: refetchEffective } = useReadContract({
+    address: sampler,
+    abi: reserveSamplerAbi,
+    functionName: "effectiveReserves",
+    chainId,
+    args: stockArgs && epochId ? [...stockArgs, epochId] : undefined,
+    query: { enabled: Boolean(sampler && stockArgs && epochId && Number(epochId) > 0), refetchInterval: 30_000 },
+  });
+
+  const { data: sampleMinRaw } = useReadContract({
+    address: sampler,
+    abi: reserveSamplerAbi,
+    functionName: "sampleMin",
+    chainId,
+    args: stockArgs && epochId ? [...stockArgs, epochId] : undefined,
+    query: { enabled: Boolean(sampler && stockArgs && epochId && Number(epochId) > 0), refetchInterval: 60_000 },
+  });
+  const sampleMin = Array.isArray(sampleMinRaw) && (sampleMinRaw[1] as bigint) > ZERO ? (sampleMinRaw[0] as bigint) : undefined;
+
   const { data: stockConfig } = useReadContract({
     address: assetConfig,
     abi: assetConfigAbi,
@@ -323,8 +363,8 @@ export function KopiApp() {
   const usdgHomeOnly = network === "arbitrumSepolia" && !net.books.liabilities.usdg;
   const floorBps = (stockConfig as { coverageFloorBps?: number } | undefined)?.coverageFloorBps;
   const coverageBps =
-    epochData && epochData.allocation > ZERO && typeof liveReserves === "bigint"
-      ? (liveReserves * BPS) / epochData.allocation
+    epochData && epochData.allocation > ZERO && typeof effectiveReserves === "bigint"
+      ? (effectiveReserves * BPS) / epochData.allocation
       : null;
   const covered =
     coverageBps !== null && floorBps !== undefined ? coverageBps >= BigInt(floorBps) : undefined;
@@ -334,6 +374,7 @@ export function KopiApp() {
     void refetchUsdg();
     void refetchTsla();
     void refetchReserves();
+    void refetchEffective();
   }
 
   function goToScene(id: number) {
@@ -515,16 +556,25 @@ export function KopiApp() {
     const vault = dep?.contracts.GuardedLendingVault;
     const borrower = dep?.vault?.demoBorrower;
     if (vault && borrower) {
+      const [debt, liquidity] = (await Promise.all([
+        publicClient
+          .readContract({ address: vault, abi: guardedVaultAbi, functionName: "debtOf", args: [borrower] })
+          .catch(() => ZERO),
+        publicClient
+          .readContract({ address: vault, abi: guardedVaultAbi, functionName: "availableLiquidity" })
+          .catch(() => ZERO),
+      ])) as [bigint, bigint];
       probes.push({
-        label: "Lending vault: withdraw mTSLA collateral",
+        label:
+          debt > ZERO
+            ? `Lending vault: withdraw mTSLA collateral (borrower owes ${formatUnits(debt, 6)} USDG)`
+            : "Lending vault: withdraw mTSLA collateral with no debt",
+        staysOpen: debt === ZERO,
         to: vault,
         account: borrower,
         abi: guardedVaultAbi,
         data: encodeFunctionData({ abi: guardedVaultAbi, functionName: "withdrawCollateral", args: [BigInt(1)] }),
       });
-      const liquidity = (await publicClient
-        .readContract({ address: vault, abi: guardedVaultAbi, functionName: "availableLiquidity" })
-        .catch(() => ZERO)) as bigint;
       if (liquidity >= USDG_UNIT) {
         probes.push({
           label: "Lending vault: borrow 1 USDG against mTSLA",
@@ -588,7 +638,7 @@ export function KopiApp() {
         Promise.all(
           probes.map(async (p) => {
             const [live, simulated] = await Promise.all([runProbe(p, {}), runProbe(p, o)]);
-            return { label: p.label, live, sim: simulated };
+            return { label: p.label, live, sim: simulated, staysOpen: p.staysOpen };
           })
         ),
       ]);
@@ -673,8 +723,8 @@ export function KopiApp() {
       : network === "arbitrumSepolia"
         ? `https://repo.sourcify.dev/421614/${oracle}`
         : undefined;
-  // Everything except the external tokens (Paxos USDG, Robinhood TSLA) is ours and source-verified.
-  const ownContracts = dep ? Object.keys(dep.contracts).filter((k) => k !== "USDG" && k !== "TSLA").length : 0;
+  const verifiedText = isLocal || !verification ? "—" : `${verification.verified} / ${verification.total}`;
+  const verifiedShort = verification !== null && verification.unverified.length > 0;
 
   const txLink = (hash?: string | null) =>
     hash && net.explorer ? (
@@ -820,14 +870,28 @@ export function KopiApp() {
         <div className="strip-cell">
           <span className="label">mTSLA coverage</span>
           <span className={`big ${covered === false ? "bad-text" : ""}`}>{percent(coverageBps)}</span>
-          <span className="sub">required ≥ {percent(floorBps !== undefined ? BigInt(floorBps) : undefined)}</span>
+          <span className="sub">
+            min(samples, live) · required ≥ {percent(floorBps !== undefined ? BigInt(floorBps) : undefined)}
+          </span>
         </div>
         <div className="strip-cell">
           <span className="label">Contracts verified</span>
-          <span className="big">{isLocal || !dep ? "—" : `${ownContracts} / ${ownContracts}`}</span>
+          <span className={`big ${verifiedShort ? "bad-text" : ""}`}>{verifiedText}</span>
           {verifiedHref ? (
-            <a className="sub" href={verifiedHref} target="_blank" rel="noreferrer">
-              {network === "robinhoodTestnet" ? "Blockscout" : "Sourcify"} ↗
+            <a
+              className="sub"
+              href={verifiedHref}
+              target="_blank"
+              rel="noreferrer"
+              title={
+                verification
+                  ? `Checked ${new Date(verification.checkedAt).toUTCString()}${
+                      verification.unverified.length ? ` · not verified: ${verification.unverified.join(", ")}` : ""
+                    }${verification.unknown ? ` · ${verification.unknown} could not be checked` : ""}`
+                  : undefined
+              }
+            >
+              checked on {network === "robinhoodTestnet" ? "Blockscout" : "Sourcify"} ↗
             </a>
           ) : (
             <span className="sub">local node</span>
@@ -882,11 +946,13 @@ export function KopiApp() {
               <dd>{amount(epochData?.totalLiability, "stock")}</dd>
               <dt>Allocated to this chain</dt>
               <dd>{amount(epochData?.allocation, "stock")}</dd>
-              <dt>Live reserves</dt>
+              <dt>Live balance</dt>
               <dd>{amount(typeof liveReserves === "bigint" ? liveReserves : undefined, "stock")}</dd>
+              <dt>Lowest sample this epoch</dt>
+              <dd>{amount(sampleMin, "stock")}</dd>
               <dt>Coverage</dt>
               <dd>
-                <strong>{percent(coverageBps)}</strong> actual · required ≥{" "}
+                <strong>{percent(coverageBps)}</strong> counted (min of samples and live) · required ≥{" "}
                 {percent(floorBps !== undefined ? BigInt(floorBps) : undefined)}
               </dd>
             </dl>
@@ -1088,11 +1154,12 @@ export function KopiApp() {
                 {!sim.error &&
                   sim.reason === SCENARIO_EXPECTED_REASON[sim.id] &&
                   sim.gates.length > 0 &&
-                  sim.gates.every((g) => g.sim !== "allowed") && (
+                  sim.gates.every((g) => (g.staysOpen ? g.sim === "allowed" : g.sim !== "allowed")) && (
                     <p className="result">
                       The real {net.label} contracts fail closed: the oracle reports{" "}
                       <strong>{reasonLabel(sim.reason ?? undefined)}</strong>, payouts are refused and the lending
-                      vault stops lending against mTSLA until the custodian fixes it. Repaying is never blocked.
+                      vault stops lending against mTSLA until the custodian fixes it. Repaying, and withdrawing
+                      collateral once the loan is repaid, are never blocked.
                     </p>
                   )}
                 <button type="button" className="ghost" onClick={() => setSim(null)}>

@@ -115,6 +115,37 @@ describe("GuardedLendingVault (SolvencyGuard)", function () {
     );
   });
 
+  it("lets a debt-free borrower withdraw collateral while insolvent, including 30 days later", async function () {
+    const { f, vault, borrower } = await vaultFixture();
+    await drain(f);
+    await expect(vault.connect(borrower).borrow(USDG(1)))
+      .to.be.revertedWithCustomError(vault, "Insolvent")
+      .withArgs(6); // LIVE_SHORT
+    await expect(vault.connect(borrower).withdrawCollateral(TSLA("4"))).to.emit(vault, "CollateralWithdrawn");
+
+    await ethers.provider.send("evm_increaseTime", [30 * 24 * 3600]);
+    await ethers.provider.send("evm_mine", []);
+    const [ok] = await f.oracle.status(f.custodianId, await f.stock.getAddress());
+    expect(ok).to.equal(false);
+    await expect(vault.connect(borrower).withdrawCollateral(TSLA("6"))).to.emit(vault, "CollateralWithdrawn");
+    expect(await vault.collateralOf(borrower.address)).to.equal(0n);
+    expect(await f.stock.balanceOf(borrower.address)).to.equal(TSLA("10"));
+  });
+
+  it("de-risks while insolvent: blocked with debt, repay, then withdraw", async function () {
+    const { f, vault, borrower } = await vaultFixture();
+    await vault.connect(borrower).borrow(USDG(500));
+    await drain(f);
+
+    await expect(vault.connect(borrower).withdrawCollateral(TSLA("1")))
+      .to.be.revertedWithCustomError(vault, "Insolvent")
+      .withArgs(6);
+    await vault.connect(borrower).repay(USDG(500));
+    await expect(vault.connect(borrower).withdrawCollateral(TSLA("10")))
+      .to.emit(vault, "CollateralWithdrawn")
+      .withArgs(borrower.address, TSLA("10"));
+  });
+
   it("fails closed before any epoch is published", async function () {
     const { vault, borrower } = await vaultFixture({ publish: false });
     await expect(vault.connect(borrower).borrow(USDG(1)))

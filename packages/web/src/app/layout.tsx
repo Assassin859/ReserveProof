@@ -10,9 +10,11 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://reserveproof-teal.vercel.app"),
   title,
   description,
+  alternates: { canonical: "/" },
   openGraph: {
     title,
     description,
+    url: "/",
     type: "website",
     siteName: "ReserveProof",
   },

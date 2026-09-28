@@ -55,15 +55,16 @@ contract MyMarket is SolvencyGuard {
 ```
 
 [`src/examples/GuardedLendingVault.sol`](src/examples/GuardedLendingVault.sol) is a worked example: lenders
-supply USDG, borrowers post mTSLA and borrow at 50% LTV. `borrow` and `withdrawCollateral` stop the moment
-the custodian's proof fails; `repay` and adding collateral never do, so nobody is trapped while trying to
-de-risk. It is deployed and verified on both testnets, and the web simulator shows it flipping from
-Allowed to `Insolvent (STALE)` etc. against the live contracts.
+supply USDG, borrowers post mTSLA and borrow at 50% LTV. `borrow` stops the moment the custodian's proof
+fails, and so does `withdrawCollateral` while the caller still has debt. Repaying, adding collateral and
+withdrawing collateral with no debt never stop, so nobody is trapped while de-risking, even if a dispute
+keeps the oracle red indefinitely. It is deployed and verified on both testnets, and the web simulator
+shows it flipping from Allowed to `Insolvent (STALE)` etc. against the live contracts.
 
-| Network | GuardedLendingVault |
-|---|---|
-| Robinhood testnet | [`0x3405…31a3`](https://explorer.testnet.chain.robinhood.com/address/0x34058dc47D9D107622C265B6767A96A7DC2031a3#code) (5 USDG liquidity) |
-| Arbitrum Sepolia | [`0xfC18…68Fe`](https://arbitrum-sepolia.blockscout.com/address/0xfC18e00Be3fE26d5F280CF3A6006A664D5F868Fe#code) |
+| Network | GuardedLendingVault | Demo borrower |
+|---|---|---|
+| Robinhood testnet | [`0x6c7C…73a9`](https://explorer.testnet.chain.robinhood.com/address/0x6c7C5100C812e1c95B2D745a33004Ef85E4573a9#code) | 10 mTSLA collateral, owes 1 USDG; 4 USDG liquidity |
+| Arbitrum Sepolia | [`0x99Eb…46EF`](https://repo.sourcify.dev/421614/0x99EbFe9eB529cfE13828ba42684761B6920046EF) | 10 mTSLA collateral, no debt (shows the debt-free exit) |
 
 ## Stack
 
@@ -76,12 +77,15 @@ Allowed to `Insolvent (STALE)` etc. against the live contracts.
 
 ## Quick start
 
+Prerequisites: Node 24 and npm 11 or newer (`npm ci` on npm 9/10 is rejected by `engine-strict`), plus
+[Foundry](https://book.getfoundry.sh/getting-started/installation) for the fuzz and invariant suites.
+
 ```bash
-npm install
+npm ci
 npm test
 npm run build
 
-# Foundry fuzz tests (one-time forge-std install into the gitignored lib/)
+# Foundry fuzz + invariant tests. lib/ is gitignored, so install forge-std once first.
 forge install foundry-rs/forge-std --no-git
 forge test
 ```

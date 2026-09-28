@@ -10,9 +10,10 @@ import {ISolvencyOracle} from "../interfaces/ISolvencyOracle.sol";
 /// @title GuardedLendingVault — example money market that trusts a custodial stock token only while
 ///        its custodian is provably solvent.
 /// @notice Lenders supply the loan token (USDG). Borrowers post the custodial stock token as collateral
-///         and borrow up to `ltvBps` of its value at a fixed demo price. `borrow` and
-///         `withdrawCollateral` are gated by `onlySolvent(collateral)`; `repay` and adding collateral
-///         never are, so a failing proof freezes new risk without trapping anyone who wants to de-risk.
+///         and borrow up to `ltvBps` of its value at a fixed demo price. `borrow` is gated by
+///         `onlySolvent(collateral)`, and `withdrawCollateral` is gated only while the caller has debt.
+///         Repaying, adding collateral and withdrawing debt-free collateral never are, so a failing proof
+///         freezes new risk without trapping anyone who wants to de-risk.
 ///         No interest and no liquidations: this is an integration example, not a production market.
 contract GuardedLendingVault is SolvencyGuard, ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -96,9 +97,12 @@ contract GuardedLendingVault is SolvencyGuard, ReentrancyGuard {
         emit CollateralDeposited(msg.sender, amount);
     }
 
-    function withdrawCollateral(uint256 amount) external onlySolvent(address(collateral)) nonReentrant {
+    /// @notice Gated only while the caller owes something: a debt-free borrower can always exit, even
+    ///         if the custodian's proof stays failed indefinitely (e.g. an unresolved dispute).
+    function withdrawCollateral(uint256 amount) external nonReentrant {
         if (amount == 0) revert ZeroAmount();
         if (collateralOf[msg.sender] < amount) revert InsufficientBalance();
+        if (debtOf[msg.sender] > 0) _requireSolvent(address(collateral));
         collateralOf[msg.sender] -= amount;
         uint256 maxDebt = maxBorrow(msg.sender);
         if (debtOf[msg.sender] > maxDebt) revert ExceedsLtv(maxDebt, debtOf[msg.sender]);

@@ -40,7 +40,7 @@ export const SCENES = [
     id: 2,
     title: "Liabilities vs reserves",
     blurb:
-      "Each epoch the custodian commits what it owes as a Merkle-sum root. The oracle only reports solvent while live reserves cover that allocation by at least the coverage floor.",
+      "Each epoch the custodian commits what it owes as a Merkle-sum root. The oracle only reports solvent while reserves cover that allocation by at least the coverage floor, counting the lower of the epoch's lowest sample and the live balance.",
   },
   {
     id: 3,

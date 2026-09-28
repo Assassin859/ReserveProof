@@ -77,6 +77,13 @@ export const ASSET_META: Record<AssetKind, { label: string; decimals: number }> 
   tsla: { label: "TSLA", decimals: 18 },
 };
 
+/** Our own contracts: everything except external tokens (Paxos USDG, Robinhood TSLA). */
+export function ownContracts(dep: Deployment): [string, `0x${string}`][] {
+  return (Object.entries(dep.contracts) as [string, `0x${string}` | undefined][]).filter(
+    (e): e is [string, `0x${string}`] => Boolean(e[1]) && e[0] !== "USDG" && e[0] !== "TSLA"
+  );
+}
+
 export function defaultNetwork(): NetworkKey {
   const env = process.env.NEXT_PUBLIC_DEFAULT_NETWORK as NetworkKey | undefined;
   return env && NETWORK_KEYS.includes(env) ? env : "robinhoodTestnet";

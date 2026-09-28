@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "description": "Open-source proof of reserves + ExitRight for USDG and Robinhood Stock Tokens",
+  "engines": {
+    "node": ">=24",
+    "npm": ">=11"
+  },
+  "packageManager": "npm@11.17.0",
   "scripts": {
     "build": "hardhat compile",
     "test": "hardhat test",

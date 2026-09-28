@@ -1,5 +1,20 @@
 # Explorer verify prep
 
+## Run the tests yourself
+
+Needs Node 24, npm 11 or newer, and [Foundry](https://book.getfoundry.sh/getting-started/installation).
+
+```bash
+npm ci                                      # npm 9/10 is rejected by engine-strict
+npm test                                    # Hardhat unit + integration tests
+forge install foundry-rs/forge-std --no-git # once: lib/ is gitignored
+forge test                                  # Merkle-sum fuzzing + DisputeModule / ExitRight invariants
+```
+
+The Slither triage is in [SECURITY-SCAN.md](./SECURITY-SCAN.md).
+
+## Deploying and verifying
+
 Do this **after** funded `deploy:rh` / `deploy:arb`. No live verify until addresses exist.
 
 ## Checklist
