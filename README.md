@@ -42,6 +42,29 @@ flowchart LR
 5. **Anyone disputes.** Unanswered inclusion challenges, signed-statement mismatches and equivocation flip the oracle to DISPUTED.
 6. **ExitRight** lets a user with a leaf proof open a bonded withdrawal claim. If the operator doesn't `settle` in time, the bond is slashed to the user and the asset is marked EXIT_DEFAULT.
 
+## Integrate in three lines: `SolvencyGuard`
+
+```solidity
+import {SolvencyGuard} from "reserveproof/src/guards/SolvencyGuard.sol";
+import {ISolvencyOracle} from "reserveproof/src/interfaces/ISolvencyOracle.sol";
+
+contract MyMarket is SolvencyGuard {
+    constructor(ISolvencyOracle oracle, bytes32 custodianId) SolvencyGuard(oracle, custodianId) {}
+    function borrow(uint256 amt) external onlySolvent(address(mTSLA)) { /* ... */ } // reverts Insolvent(reason)
+}
+```
+
+[`src/examples/GuardedLendingVault.sol`](src/examples/GuardedLendingVault.sol) is a worked example: lenders
+supply USDG, borrowers post mTSLA and borrow at 50% LTV. `borrow` and `withdrawCollateral` stop the moment
+the custodian's proof fails; `repay` and adding collateral never do, so nobody is trapped while trying to
+de-risk. It is deployed and verified on both testnets, and the web simulator shows it flipping from
+Allowed to `Insolvent (STALE)` etc. against the live contracts.
+
+| Network | GuardedLendingVault |
+|---|---|
+| Robinhood testnet | [`0x3405…31a3`](https://explorer.testnet.chain.robinhood.com/address/0x34058dc47D9D107622C265B6767A96A7DC2031a3#code) (5 USDG liquidity) |
+| Arbitrum Sepolia | [`0xfC18…68Fe`](https://arbitrum-sepolia.blockscout.com/address/0xfC18e00Be3fE26d5F280CF3A6006A664D5F868Fe#code) |
+
 ## Stack
 
 - Solidity 0.8.24
@@ -75,9 +98,9 @@ against the 103% floor, and contract verification. **Local Hardhat** is offered 
   and checks the computed root against the committed one.
 - **What-if simulator:** *Drain reserves*, *Skip 8 days*, *Stock split* and *Fraud dispute* each run a
   read-only `eth_call` against the live contracts with one storage slot or the block time overridden, and
-  show the oracle flip to LIVE_SHORT, STALE, MULTIPLIER_DRIFT or DISPUTED while `GatedPayout` reverts
-  `Insolvent`. No wallet, no gas. `npm run whatif:check:rh` / `whatif:check:arb` asserts the same four
-  results from the command line.
+  show the oracle flip to LIVE_SHORT, STALE, MULTIPLIER_DRIFT or DISPUTED while `GatedPayout` and the
+  lending vault revert `Insolvent`. No wallet, no gas. `npm run whatif:check:rh` / `whatif:check:arb`
+  asserts the same results from the command line.
 - **ExitRight:** live bond, in-flight bond, claim count and the recorded claim-and-settle transactions on
   Robinhood.
 

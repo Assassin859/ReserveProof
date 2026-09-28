@@ -22,6 +22,7 @@ import {
   exitRightAbi,
   reserveSamplerAbi,
   assetConfigAbi,
+  guardedVaultAbi,
 } from "../lib/abis";
 import { buildSortedTree, verifyInclusion, type ProofNode } from "../lib/merkle";
 import { reasonLabel } from "../lib/reasons";
@@ -89,20 +90,22 @@ type ExitInfo = {
 
 type GateResult = "allowed" | string;
 
+type GateRow = { label: string; live: GateResult; sim: GateResult };
+
 type SimResult = {
   id: ScenarioId;
   detail: string;
   liveReason: number | null;
   reason: number | null;
-  livePayout: GateResult;
-  payout: GateResult;
+  gates: GateRow[];
   error?: string;
 };
 
+type GateProbe = { label: string; to: Address; data: Hex; account: Address; abi: Abi };
+
 const ZERO = BigInt(0);
 const BPS = BigInt(10_000);
-const VERIFIED_CONTRACTS = 10;
-
+const USDG_UNIT = BigInt(1_000_000);
 function short(addr?: string) {
   if (!addr) return "—";
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
@@ -134,20 +137,28 @@ function parseEpoch(raw: unknown): EpochView | null {
 
 function revertName(e: unknown, abi?: Abi): string | undefined {
   if (!(e instanceof BaseError)) return undefined;
+  let decoded: { errorName: string; args?: readonly unknown[] } | undefined;
   const revert = e.walk((err) => err instanceof ContractFunctionRevertedError);
-  if (revert instanceof ContractFunctionRevertedError && revert.data?.errorName) return revert.data.errorName;
-  if (!abi) return undefined;
-  const withData = e.walk((err) => typeof (err as { data?: unknown }).data === "string") as
-    | { data?: Hex }
-    | null;
-  if (withData?.data) {
-    try {
-      return decodeErrorResult({ abi, data: withData.data }).errorName;
-    } catch {
-      return undefined;
+  if (revert instanceof ContractFunctionRevertedError && revert.data?.errorName) {
+    decoded = revert.data;
+  } else if (abi) {
+    const withData = e.walk((err) => typeof (err as { data?: unknown }).data === "string") as
+      | { data?: Hex }
+      | null;
+    if (withData?.data) {
+      try {
+        decoded = decodeErrorResult({ abi, data: withData.data });
+      } catch {
+        return undefined;
+      }
     }
   }
-  return undefined;
+  if (!decoded) return undefined;
+  // SolvencyGuard's Insolvent(uint8 reason) carries the oracle reason code.
+  if (decoded.errorName === "Insolvent" && decoded.args?.length) {
+    return `Insolvent (${reasonLabel(Number(decoded.args[0]))})`;
+  }
+  return decoded.errorName;
 }
 
 function amount(value: bigint | undefined, kind: AssetKind) {
@@ -475,27 +486,55 @@ export function KopiApp() {
     }
   }
 
-  const probeGate = useCallback(
-    async (o: WhatIfOverrides): Promise<GateResult> => {
-      if (!publicClient || !gated || !reserveWallet) return "unavailable";
-      const probe = (net.books.demoUser ?? reserveWallet) as Address;
-      try {
-        await publicClient.call({
-          account: probe,
-          to: gated,
-          data: encodeFunctionData({
-            abi: gatedPayoutAbi,
-            functionName: "payout",
-            args: [reserveWallet, ZERO],
-          }),
-          ...o,
+  const gateProbes = useCallback(async (): Promise<GateProbe[]> => {
+    const probes: GateProbe[] = [];
+    if (!publicClient || !reserveWallet) return probes;
+    if (gated) {
+      probes.push({
+        label: "GatedPayout.payout (demo user)",
+        to: gated,
+        account: (net.books.demoUser ?? reserveWallet) as Address,
+        abi: gatedPayoutAbi,
+        data: encodeFunctionData({ abi: gatedPayoutAbi, functionName: "payout", args: [reserveWallet, ZERO] }),
+      });
+    }
+    const vault = dep?.contracts.GuardedLendingVault;
+    const borrower = dep?.vault?.demoBorrower;
+    if (vault && borrower) {
+      probes.push({
+        label: "Lending vault: withdraw mTSLA collateral",
+        to: vault,
+        account: borrower,
+        abi: guardedVaultAbi,
+        data: encodeFunctionData({ abi: guardedVaultAbi, functionName: "withdrawCollateral", args: [BigInt(1)] }),
+      });
+      const liquidity = (await publicClient
+        .readContract({ address: vault, abi: guardedVaultAbi, functionName: "availableLiquidity" })
+        .catch(() => ZERO)) as bigint;
+      if (liquidity >= USDG_UNIT) {
+        probes.push({
+          label: "Lending vault: borrow 1 USDG against mTSLA",
+          to: vault,
+          account: borrower,
+          abi: guardedVaultAbi,
+          data: encodeFunctionData({ abi: guardedVaultAbi, functionName: "borrow", args: [USDG_UNIT] }),
         });
+      }
+    }
+    return probes;
+  }, [publicClient, gated, reserveWallet, net.books.demoUser, dep]);
+
+  const runProbe = useCallback(
+    async (p: GateProbe, o: WhatIfOverrides): Promise<GateResult> => {
+      if (!publicClient) return "unavailable";
+      try {
+        await publicClient.call({ account: p.account, to: p.to, data: p.data, ...o });
         return "allowed";
       } catch (e) {
-        return revertName(e, gatedPayoutAbi) ?? "reverted";
+        return revertName(e, p.abi) ?? "reverted";
       }
     },
-    [publicClient, gated, reserveWallet, net.books.demoUser]
+    [publicClient]
   );
 
   async function runWhatIf(id: ScenarioId) {
@@ -522,7 +561,8 @@ export function KopiApp() {
       dispute: `stateOverride on DisputeModule ${short(dep.contracts.DisputeModule)}: openDisputeCount[kopi][mTSLA] = 1`,
     };
     try {
-      const [liveRaw, simRaw, livePayout, payout] = await Promise.all([
+      const probes = await gateProbes();
+      const [liveRaw, simRaw, gates] = await Promise.all([
         publicClient.readContract({ address: oracle, abi: solvencyOracleAbi, functionName: "status", args: stockArgs }),
         publicClient.readContract({
           address: oracle,
@@ -531,16 +571,19 @@ export function KopiApp() {
           args: stockArgs,
           ...o,
         }),
-        probeGate({}),
-        probeGate(o),
+        Promise.all(
+          probes.map(async (p) => {
+            const [live, simulated] = await Promise.all([runProbe(p, {}), runProbe(p, o)]);
+            return { label: p.label, live, sim: simulated };
+          })
+        ),
       ]);
       setSim({
         id,
         detail: details[id],
         liveReason: parseStatus(liveRaw)?.reason ?? null,
         reason: parseStatus(simRaw)?.reason ?? null,
-        livePayout,
-        payout,
+        gates,
       });
     } catch (e) {
       const err = e as Error & { shortMessage?: string };
@@ -549,8 +592,7 @@ export function KopiApp() {
         detail: details[id],
         liveReason: null,
         reason: null,
-        livePayout: "—",
-        payout: "—",
+        gates: [],
         error: `This network's RPC rejected the simulated call: ${err.shortMessage || err.message}`,
       });
     } finally {
@@ -617,6 +659,8 @@ export function KopiApp() {
       : network === "arbitrumSepolia"
         ? `https://repo.sourcify.dev/421614/${oracle}`
         : undefined;
+  // Every deployed contract except the external Paxos USDG token is ours and source-verified.
+  const ownContracts = dep ? Object.keys(dep.contracts).filter((k) => k !== "USDG").length : 0;
 
   const txLink = (hash?: string | null) =>
     hash && net.explorer ? (
@@ -753,7 +797,7 @@ export function KopiApp() {
         </div>
         <div className="strip-cell">
           <span className="label">Contracts verified</span>
-          <span className="big">{isLocal ? "—" : `${VERIFIED_CONTRACTS} / ${VERIFIED_CONTRACTS}`}</span>
+          <span className="big">{isLocal || !dep ? "—" : `${ownContracts} / ${ownContracts}`}</span>
           {verifiedHref ? (
             <a className="sub" href={verifiedHref} target="_blank" rel="noreferrer">
               {network === "robinhoodTestnet" ? "Blockscout" : "Sourcify"} ↗
@@ -1000,29 +1044,30 @@ export function KopiApp() {
                           </span>
                         </td>
                       </tr>
-                      <tr>
-                        <td>GatedPayout.payout</td>
-                        <td>
-                          <span className={`pill ${sim.livePayout === "allowed" ? "ok" : "bad"}`}>
-                            {gateLabel(sim.livePayout)}
-                          </span>
-                        </td>
-                        <td>
-                          <span className={`pill ${sim.payout === "allowed" ? "ok" : "bad"}`}>
-                            {gateLabel(sim.payout)}
-                          </span>
-                        </td>
-                      </tr>
+                      {sim.gates.map((g) => (
+                        <tr key={g.label}>
+                          <td>{g.label}</td>
+                          <td>
+                            <span className={`pill ${g.live === "allowed" ? "ok" : "bad"}`}>{gateLabel(g.live)}</span>
+                          </td>
+                          <td>
+                            <span className={`pill ${g.sim === "allowed" ? "ok" : "bad"}`}>{gateLabel(g.sim)}</span>
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 )}
-                {!sim.error && sim.reason === SCENARIO_EXPECTED_REASON[sim.id] && sim.payout !== "allowed" && (
-                  <p className="result">
-                    The real {net.label} contracts fail closed: the oracle reports{" "}
-                    <strong>{reasonLabel(sim.reason ?? undefined)}</strong> and every payout is refused until the
-                    custodian fixes it.
-                  </p>
-                )}
+                {!sim.error &&
+                  sim.reason === SCENARIO_EXPECTED_REASON[sim.id] &&
+                  sim.gates.length > 0 &&
+                  sim.gates.every((g) => g.sim !== "allowed") && (
+                    <p className="result">
+                      The real {net.label} contracts fail closed: the oracle reports{" "}
+                      <strong>{reasonLabel(sim.reason ?? undefined)}</strong>, payouts are refused and the lending
+                      vault stops lending against mTSLA until the custodian fixes it. Repaying is never blocked.
+                    </p>
+                  )}
                 <button type="button" className="ghost" onClick={() => setSim(null)}>
                   Reset
                 </button>

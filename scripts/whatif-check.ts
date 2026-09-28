@@ -69,25 +69,54 @@ async function main() {
     }
   };
 
+  const vault = c.GuardedLendingVault
+    ? await ethers.getContractAt("GuardedLendingVault", c.GuardedLendingVault)
+    : undefined;
+  const borrower: string | undefined = dep.vault?.demoBorrower;
+  const vaultProbes: [string, string][] = [];
+  if (vault && borrower) {
+    vaultProbes.push(["withdrawCollateral", vault.interface.encodeFunctionData("withdrawCollateral", [1n])]);
+    if ((await vault.availableLiquidity()) > 0n) {
+      vaultProbes.push(["borrow", vault.interface.encodeFunctionData("borrow", [1n])]);
+    }
+  }
+  const guardSel = vault?.interface.getError("Insolvent")!.selector;
+  const vaultResult = async (data: string, o: { state?: object; block?: object }) => {
+    try {
+      await call(c.GuardedLendingVault, data, o, borrower);
+      return "allowed";
+    } catch (e) {
+      const raw = JSON.stringify(e);
+      const m = raw.match(new RegExp(`${guardSel!.slice(2)}([0-9a-f]{64})`, "i"));
+      return m ? `Insolvent(${Number(BigInt("0x" + m[1]))})` : `reverted (${(e as Error).message.slice(0, 80)})`;
+    }
+  };
+
   let failed = 0;
   const base = await reasonOf({});
-  console.log(`${net} baseline: reason=${base} payout=${await payoutResult({})}`);
+  const baseVault = await Promise.all(vaultProbes.map(async ([n, d]) => `${n}=${await vaultResult(d, {})}`));
+  console.log(`${net} baseline: reason=${base} payout=${await payoutResult({})} ${baseVault.join(" ")}`);
   if (base !== 0) console.log("  note: live oracle is not OK, so scenario results below may be masked");
+  if (baseVault.some((v) => !v.endsWith("=allowed"))) failed++;
 
   for (const id of Object.keys(SCENARIO_EXPECTED_REASON) as ScenarioId[]) {
     const o = overrides(id);
+    const want = SCENARIO_EXPECTED_REASON[id];
     let reason: number | string;
     let pay: string;
+    let vaultRes: string[] = [];
     try {
       reason = await reasonOf(o);
       pay = await payoutResult(o);
+      vaultRes = await Promise.all(vaultProbes.map(async ([n, d]) => `${n}=${await vaultResult(d, o)}`));
     } catch (e) {
       reason = `ERR ${(e as Error).message.slice(0, 100)}`;
       pay = "-";
     }
-    const ok = reason === SCENARIO_EXPECTED_REASON[id] && pay === "Insolvent";
+    const ok =
+      reason === want && pay === "Insolvent" && vaultRes.every((v) => v.endsWith(`=Insolvent(${want})`));
     if (!ok) failed++;
-    console.log(`${ok ? "PASS" : "FAIL"} ${id}: reason=${reason} (want ${SCENARIO_EXPECTED_REASON[id]}) payout=${pay}`);
+    console.log(`${ok ? "PASS" : "FAIL"} ${id}: reason=${reason} (want ${want}) payout=${pay} ${vaultRes.join(" ")}`);
   }
   if (failed) {
     console.error(`${failed} scenario(s) failed`);

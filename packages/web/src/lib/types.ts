@@ -16,8 +16,14 @@ export type Deployment = {
     ExitRight: `0x${string}`;
     GatedPayout?: `0x${string}`;
     GatedLendWithdraw?: `0x${string}`;
+    GuardedLendingVault?: `0x${string}`;
     MockStockToken: `0x${string}`;
     USDG: `0x${string}`;
+  };
+  vault?: {
+    demoBorrower: `0x${string}`;
+    collateralPrice: string;
+    ltvBps: number;
   };
 };
 

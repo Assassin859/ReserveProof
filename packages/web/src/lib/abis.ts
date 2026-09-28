@@ -8,6 +8,7 @@ import stockAbi from "../abi/MockStockToken.json";
 import exitAbi from "../abi/ExitRight.json";
 import samplerAbi from "../abi/ReserveSampler.json";
 import assetConfigJson from "../abi/AssetConfig.json";
+import vaultJson from "../abi/GuardedLendingVault.json";
 
 export const custodianRegistryAbi = registryAbi.abi as Abi;
 export const solvencyOracleAbi = oracleAbi.abi as Abi;
@@ -18,3 +19,4 @@ export const mockStockAbi = stockAbi.abi as Abi;
 export const exitRightAbi = exitAbi.abi as Abi;
 export const reserveSamplerAbi = samplerAbi.abi as Abi;
 export const assetConfigAbi = assetConfigJson.abi as Abi;
+export const guardedVaultAbi = vaultJson.abi as Abi;

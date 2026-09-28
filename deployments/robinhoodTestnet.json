@@ -22,6 +22,12 @@
     "GatedPayout": "0xed67EC461D64e42ed1472d3d74cbb32ee143a430",
     "GatedLendWithdraw": "0xE4B526f9b8216852FD186E6a633446BD1834D7C7",
     "MockStockToken": "0x66069A805d8c96a710B800066FdcEAfdfBcaA248",
-    "USDG": "0x7E955252E15c84f5768B83c41a71F9eba181802F"
+    "USDG": "0x7E955252E15c84f5768B83c41a71F9eba181802F",
+    "GuardedLendingVault": "0x34058dc47D9D107622C265B6767A96A7DC2031a3"
+  },
+  "vault": {
+    "demoBorrower": "0x4F38186806e8e3c96Cf39ae13F3231639DaD15Ba",
+    "collateralPrice": "250000000",
+    "ltvBps": 5000
   }
 }

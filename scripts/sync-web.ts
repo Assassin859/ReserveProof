@@ -13,6 +13,7 @@ const CONTRACTS = [
   "ExitRight",
   "GatedLendWithdraw",
   "GatedPayout",
+  "GuardedLendingVault",
   "LiabilityLedger",
   "MockStockToken",
   "MockUSDG",

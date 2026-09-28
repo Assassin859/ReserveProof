@@ -22,6 +22,7 @@ const SOURCES: Record<string, string> = {
   MockStockToken: "src/mocks/MockStockToken.sol",
   GatedPayout: "src/composers/GatedPayout.sol",
   GatedLendWithdraw: "src/composers/GatedLendWithdraw.sol",
+  GuardedLendingVault: "src/examples/GuardedLendingVault.sol",
 };
 
 const buildInfoDir = "artifacts/build-info";
