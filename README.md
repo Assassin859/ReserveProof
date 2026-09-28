@@ -70,6 +70,7 @@ Allowed to `Insolvent (STALE)` etc. against the live contracts.
 - Solidity 0.8.24
 - Hardhat (compile / test)
 - **Fuzzed with Foundry:** `forge test` runs property tests on `MerkleSumVerifier` (2–16 leaf trees; honest proofs verify; tampered amounts, siblings, depth, leaf count, user, epoch or asset fail). CI runs both suites. Run `forge install foundry-rs/forge-std --no-git` once before `forge test`.
+- **Invariant-tested + Slither-scanned:** handler-driven invariants on the `DisputeModule` challenge queue and `ExitRight` bond accounting (9 invariants, 16k random calls per CI run), plus a triaged Slither report: [docs/SECURITY-SCAN.md](docs/SECURITY-SCAN.md).
 - OpenZeppelin Contracts 5.1.0
 - Next.js + wagmi + viem demo UI (`packages/web`)
 

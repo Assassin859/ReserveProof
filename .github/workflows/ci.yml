@@ -28,7 +28,7 @@ jobs:
           npm run build
 
   foundry:
-    name: Foundry fuzz (MerkleSumVerifier)
+    name: Foundry fuzz + invariants
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
