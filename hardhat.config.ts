@@ -7,6 +7,8 @@ dotenv.config();
 const PRIVATE_KEY = process.env.DEPLOYER_PRIVATE_KEY || process.env.PRIVATE_KEY || "";
 const accounts = PRIVATE_KEY ? [PRIVATE_KEY] : [];
 const ETHERSCAN_API_KEY = process.env.ETHERSCAN_API_KEY || "";
+// Mainnet uses its own key (scripts/make-mainnet-wallets.ts), never the testnet one.
+const MAINNET_KEY = process.env.MAINNET_PRIVATE_KEY || "";
 
 const config: HardhatUserConfig = {
   solidity: {
@@ -40,11 +42,17 @@ const config: HardhatUserConfig = {
       chainId: 421614,
       accounts,
     },
+    robinhoodMainnet: {
+      url: process.env.ROBINHOOD_MAINNET_RPC || "https://rpc.mainnet.chain.robinhood.com",
+      chainId: 4663,
+      accounts: MAINNET_KEY ? [MAINNET_KEY] : [],
+    },
   },
   etherscan: {
     apiKey: {
       // Blockscout ignores the key but hardhat-verify requires a non-empty value.
       robinhoodTestnet: "blockscout",
+      robinhoodMainnet: "blockscout",
       arbitrumSepolia: ETHERSCAN_API_KEY || "blockscout",
     },
     customChains: [
@@ -69,6 +77,14 @@ const config: HardhatUserConfig = {
         urls: {
           apiURL: "https://explorer.testnet.chain.robinhood.com/api",
           browserURL: "https://explorer.testnet.chain.robinhood.com",
+        },
+      },
+      {
+        network: "robinhoodMainnet",
+        chainId: 4663,
+        urls: {
+          apiURL: "https://robinhoodchain.blockscout.com/api",
+          browserURL: "https://robinhoodchain.blockscout.com",
         },
       },
     ],

@@ -5,7 +5,10 @@ test = "test/foundry"
 out = "forge-out"
 cache_path = "cache_forge"
 libs = ["lib", "node_modules"]
-solc_version = "0.8.24"
+# Auto-detect so Morpho Blue (pinned 0.8.19) builds next to ReserveProof; our sources are pinned
+# to 0.8.24 below to match Hardhat.
+auto_detect_solc = true
+compilation_restrictions = [{ paths = "src/**", version = "=0.8.24" }]
 optimizer = true
 optimizer_runs = 200
 via_ir = true
@@ -13,6 +16,7 @@ via_ir = true
 remappings = [
   "@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/",
   "forge-std/=lib/forge-std/src/",
+  "morpho-blue/=lib/morpho-blue/src/",
 ]
 
 [fuzz]

@@ -36,3 +36,27 @@ jobs:
           fi
       - run: npx hardhat run scripts/ops-cycle.ts --network ${{ matrix.network }}
       - run: npx hardhat run scripts/status.ts --network ${{ matrix.network }}
+
+  # Robinhood Chain mainnet (real USDG / TSLA). Uses a separate key and is skipped until the
+  # MAINNET_PRIVATE_KEY repository secret exists.
+  mainnet:
+    name: robinhoodMainnet
+    runs-on: ubuntu-latest
+    env:
+      MAINNET_PRIVATE_KEY: ${{ secrets.MAINNET_PRIVATE_KEY }}
+    steps:
+      - id: gate
+        run: echo "enabled=${{ env.MAINNET_PRIVATE_KEY != '' }}" >> "$GITHUB_OUTPUT"
+      - if: steps.gate.outputs.enabled == 'true'
+        uses: actions/checkout@v4
+      - if: steps.gate.outputs.enabled == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - if: steps.gate.outputs.enabled == 'true'
+        run: npm ci
+      - if: steps.gate.outputs.enabled == 'true'
+        run: npx hardhat run scripts/ops-cycle.ts --network robinhoodMainnet
+      - if: steps.gate.outputs.enabled == 'true'
+        run: npx hardhat run scripts/status.ts --network robinhoodMainnet

@@ -23,6 +23,8 @@ const SOURCES: Record<string, string> = {
   GatedPayout: "src/composers/GatedPayout.sol",
   GatedLendWithdraw: "src/composers/GatedLendWithdraw.sol",
   GuardedLendingVault: "src/examples/GuardedLendingVault.sol",
+  FixedPriceMorphoOracle: "src/integrations/FixedPriceMorphoOracle.sol",
+  SolvencyGatedMorphoOracle: "src/integrations/SolvencyGatedMorphoOracle.sol",
 };
 
 const buildInfoDir = "artifacts/build-info";
@@ -38,6 +40,7 @@ async function main() {
   for (const [name, source] of Object.entries(SOURCES)) {
     if (only.length && !only.includes(name)) continue;
     const address = dep.contracts[name];
+    if (!address) continue;
     const bi = buildInfos.find((b) => b.output?.contracts?.[source]?.[name]);
     if (!bi) throw new Error(`No build-info for ${source}:${name}`);
 

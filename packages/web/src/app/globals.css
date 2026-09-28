@@ -309,6 +309,98 @@ a.sub:hover {
   color: #e8a090;
 }
 
+.section-kicker {
+  margin: 0 0 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text);
+}
+
+.section-kicker .muted-text {
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.section-kicker a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.proof-line {
+  margin: 1rem 0 0;
+  font-size: 0.84rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.proof-line a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.proof-line a:hover,
+.section-kicker a:hover,
+.mainnet-links a:hover {
+  text-decoration: underline;
+}
+
+.mainnet {
+  margin-bottom: 1.5rem;
+}
+
+.live-strip.numbers {
+  margin-bottom: 0.75rem;
+}
+
+.failures {
+  margin: 0 0 0.75rem;
+  font-size: 0.84rem;
+  color: var(--muted);
+}
+
+.failures strong {
+  color: var(--text);
+}
+
+.failures a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.mainnet-card {
+  background: linear-gradient(160deg, #13201a, var(--bg1));
+  border: 1px solid #2d5a42;
+  border-radius: var(--radius);
+  padding: 0.9rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.mainnet-head {
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.mainnet-rows {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0.75rem 1.25rem;
+}
+
+.mainnet-links {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.mainnet-links a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
 .sim-grid {
   width: 100%;
   display: grid;

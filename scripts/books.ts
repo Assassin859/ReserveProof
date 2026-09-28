@@ -33,6 +33,11 @@ export const BOOKS: Record<string, Partial<Record<AssetKind, string>>> = {
   arbitrumSepolia: {
     stock: path.join(EXAMPLES, "testnet-stock.csv"),
   },
+  // Written by deploy-mainnet.ts from the reserve wallet's real balance (one demo user + placeholders).
+  robinhoodMainnet: {
+    usdg: path.join(EXAMPLES, "mainnet-usdg.csv"),
+    tsla: path.join(EXAMPLES, "mainnet-tsla.csv"),
+  },
   localhost: {
     stock: path.join(EXAMPLES, "liabilities.csv"),
   },

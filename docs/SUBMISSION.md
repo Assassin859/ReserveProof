@@ -2,18 +2,56 @@
 
 **Live demo:** [reserveproof-teal.vercel.app](https://reserveproof-teal.vercel.app) · **Repo:** https://github.com/Assassin859/ReserveProof
 
+**134 tests** (48 Hardhat + 72 Foundry unit/fuzz + 14 stateful invariants) · **13 of 13 contracts verified on both testnets** · **SolvencyGatedMorphoOracle tested against the real Morpho Blue v1.0.0 core**
+
 See [VERIFY.md](./VERIFY.md) for how to check every claim below yourself.
 
-## By the numbers
+## The problem, in numbers
+
+Read on chain from Robinhood Chain mainnet at block 74,929,115 (28 Sep 2026) by
+[`npm run market:size`](../scripts/market-size.ts); raw output in [`market-size.json`](./market-size.json).
 
 | | |
 |---|---|
-| Chains live | **2**: Robinhood Chain testnet (home) and Arbitrum Sepolia |
-| Contracts verified | **11 of 11 on each chain**: Blockscout on Robinhood, Sourcify exact match on Arbitrum |
-| Assets under proof | **3** on Robinhood: mTSLA (ERC-8056 mock), USDG, and Robinhood's real testnet **TSLA** stock token ([`0xC9f9…Bd4E`](https://explorer.testnet.chain.robinhood.com/address/0xC9f9c86933092BbbfFF3CCb4b105A4A94bf3Bd4E)); mTSLA is also allocated on Arbitrum |
-| Epochs committed | **10** across 4 books, re-published every 3 days by the [ops workflow](https://github.com/Assassin859/ReserveProof/actions/workflows/ops-epoch.yml) |
-| Tests | **42** Hardhat, **5** Foundry fuzz properties, **9** Foundry invariants (128 runs × depth 64, `fail_on_revert`), plus Slither triage: [SECURITY-SCAN.md](./SECURITY-SCAN.md) |
-| Integrations gated on solvency | **2**: `GatedPayout` and `GuardedLendingVault` (drop-in `onlySolvent` modifier, [SolvencyGuard](../src/guards/SolvencyGuard.sol)) |
+| USDG in circulation on Robinhood Chain | **672.6M USDG** |
+| Tokenized stocks and ETFs (tokens answering ERC-8056 `uiMultiplier()`) | **50 tokens, $157.4M** of supply (SPY $23.0M, NVDA $18.8M, SPCX $11.9M, TSLA $5.1M, AAPL $5.0M, …) |
+| Morpho Blue markets lending USDG against those tokens | **167 of 286 markets**: **750,016 USDG** supplied, **375,025 USDG** borrowed, **$1.06M** of stock tokens posted as collateral |
+| How many of those markets can see whether the custodian still holds the shares | **None.** Morpho asks its oracle only for `price()`. A custodian can be short, stale or mid-dispute and every market keeps lending at full price |
+| When custodians fail | **TODO (verified figures and sources pending):** FTX, Nov 2022: \_\_\_ in customer funds missing · Celsius, Jul 2022: \_\_\_ shortfall |
+
+ReserveProof puts a fail-closed proof of reserves in front of that lending, and ships it as one modifier.
+
+## The product: one line for any lending market
+
+```solidity
+contract MyMarket is SolvencyGuard {
+    function borrow(uint256 amt) external onlySolvent(address(TSLA)) { /* ... */ } // reverts Insolvent(reason)
+}
+```
+
+For Morpho Blue, where markets can't be modified, wrap the market's existing oracle instead:
+
+```solidity
+// price() forwards the base oracle while the custodian is provably solvent, reverts Insolvent(reason) otherwise.
+new SolvencyGatedMorphoOracle(existingOracle, solvencyOracle, custodianId, TSLA);
+```
+
+It reverts rather than returning 0 on purpose: a zero price would make every position liquidatable for
+free. With a revert, Morpho freezes `borrow`, indebted `withdrawCollateral` and `liquidate`, while
+`supply`, `withdraw`, `supplyCollateral`, `repay` and debt-free exits keep working, because Morpho skips
+the oracle for positions without debt. [`MorphoIntegration.t.sol`](../test/foundry/MorphoIntegration.t.sol)
+proves each of those paths against the unmodified Morpho Blue core.
+
+## By the numbers (the build)
+
+| | |
+|---|---|
+| Tests | **134**: 48 Hardhat, 60 Foundry fuzz properties (512 runs each), 12 Foundry unit tests, 14 stateful invariants (128 runs × depth 64, `fail_on_revert`) across the oracle, Merkle-sum proofs, the vault, registry/config, the ledger, disputes, ExitRight and the Morpho wrapper. `npm run test:count` prints the breakdown; Slither triage in [SECURITY-SCAN.md](./SECURITY-SCAN.md) |
+| Chains live | **2** testnets: Robinhood Chain testnet (home) and Arbitrum Sepolia |
+| Contracts verified | **13 of 13 on each chain**: Blockscout on Robinhood, Sourcify exact match on Arbitrum |
+| Assets under proof | **3** on Robinhood testnet: mTSLA (ERC-8056 mock), USDG, and Robinhood's real testnet **TSLA** stock token ([`0xC9f9…Bd4E`](https://explorer.testnet.chain.robinhood.com/address/0xC9f9c86933092BbbfFF3CCb4b105A4A94bf3Bd4E)); mTSLA is also allocated on Arbitrum |
+| Epochs committed | Re-published every 3 days by the [ops workflow](https://github.com/Assassin859/ReserveProof/actions/workflows/ops-epoch.yml) |
+| Integrations gated on solvency | **3**: `GatedPayout`, `GuardedLendingVault` (drop-in `onlySolvent`, [SolvencyGuard](../src/guards/SolvencyGuard.sol)) and [`SolvencyGatedMorphoOracle`](../src/integrations/SolvencyGatedMorphoOracle.sol) |
 | ExitRight | Live bonded claim opened by the demo user and **settled on-chain** (tx links below) |
 | Try it | [What-if simulator](https://reserveproof-teal.vercel.app): make the custodian misbehave on the real contracts, no wallet, no gas |
 | Publishing cost | about 0.00001 ETH per asset per cycle, so roughly 0.0012 ETH per asset per year at a 3-day cadence |
@@ -64,19 +102,21 @@ The wedge is the free integrator side: every protocol that gates on `isSolvent` 
 - **Overall Prize** — stretch; Robinhood Chain deploy for reserved-seat eligibility
 - Robinhood reserved seat: deployed and verified on Robinhood testnet (see VERIFY.md)
 
-## Demo script (~100 seconds), all on the hosted site
+## Demo script (~110 seconds), on the hosted site plus one terminal shot
 
 Persona: **Kopi Wallet** (fictional SEA custodian). Everything below runs on the live testnet contracts at
 [reserveproof-teal.vercel.app](https://reserveproof-teal.vercel.app) with no wallet and no gas.
 
 | t | Scene | What judges see |
 |---|---|---|
-| 0–10s | Hero + live strip | Latest epoch, last publish time, 200% coverage vs the 103% floor, 11/11 contracts verified; mTSLA, USDG and real TSLA all solvent |
-| 10–20s | 1 One wallet, one custodian | The reserve wallet is bound to Kopi; a second custodian would revert `WalletTaken` |
+| 0–10s | Hero + mainnet numbers | $157M of stock tokens and 673M USDG on Robinhood Chain mainnet, 750K USDG lent against stocks in 167 Morpho markets, 0 of them checking reserves; 134 tests under the CTAs. Once deployed, the green *live on mainnet* card: real USDG (and TSLA) in our own reserve wallet, solvent, with explorer links |
+| 10–15s | Live strip | Latest epoch, last publish time, 200% coverage vs the 103% floor, 13/13 contracts verified; mTSLA, USDG and real TSLA all solvent |
+| 15–20s | 1 One wallet, one custodian | The reserve wallet is bound to Kopi; a second custodian would revert `WalletTaken` |
 | 20–30s | 2 Liabilities vs reserves | Owed 500 mTSLA, live reserves 1,000 mTSLA, coverage above the floor → solvent |
 | 30–45s | 3 Verify my balance | *Try demo user* → browser rebuilds the tree, root matches on-chain, leaf proven; switch to TSLA to prove 1.5 real TSLA |
 | 45–85s | 4 What-if simulator | Drain → `LIVE_SHORT`, skip 8 days → `STALE`, stock split → `MULTIPLIER_DRIFT`, fraud dispute → `DISPUTED`; each time `GatedPayout` and the lending vault (borrow USDG, withdraw collateral while in debt) flip from Allowed to `Insolvent (reason)`, while repaying and debt-free withdrawal stay open |
-| 85–100s | 5 ExitRight | Live bonded claim opened by the demo user and settled by the operator, with explorer links |
+| 85–95s | 5 ExitRight | Live bonded claim opened by the demo user and settled by the operator, with explorer links |
+| 95–110s | Morpho (code + terminal) | `SolvencyGatedMorphoOracle` in one constructor line; `forge test --match-contract MorphoIntegration` against the real Morpho Blue core: borrow blocked with `Insolvent(6)`, repay and lender withdraw still work, liquidation reverts instead of seizing collateral at a zero price |
 
 Local rehearsal with real state changes (no testnet gas):
 
@@ -89,7 +129,7 @@ npm run demo:web          # http://localhost:3000
 
 ## Live deployment
 
-The core contracts share addresses on both chains (identical deployer nonce sequence); the lending vault was deployed later and differs per chain. Robinhood: all 11 contracts verified on Blockscout (`npm run verify:rh`). Arbitrum Sepolia: all 11 exact-match on Sourcify (`npm run verify:sourcify`).
+The core contracts share addresses on both chains (identical deployer nonce sequence); the lending vault and Morpho oracles were deployed later and differ per chain. Robinhood: all 13 contracts verified on Blockscout (`npm run verify:rh`). Arbitrum Sepolia: all 13 exact-match on Sourcify (`npm run verify:sourcify`).
 
 | Contract | Robinhood testnet | Arbitrum Sepolia |
 |---|---|---|
@@ -102,6 +142,8 @@ The core contracts share addresses on both chains (identical deployer nonce sequ
 | GatedPayout | [0xed67…a430](https://explorer.testnet.chain.robinhood.com/address/0xed67EC461D64e42ed1472d3d74cbb32ee143a430#code) | [Sourcify](https://repo.sourcify.dev/421614/0xed67EC461D64e42ed1472d3d74cbb32ee143a430) |
 | MockStockToken (mTSLA) | [0x6606…A248](https://explorer.testnet.chain.robinhood.com/address/0x66069A805d8c96a710B800066FdcEAfdfBcaA248#code) | [Sourcify](https://repo.sourcify.dev/421614/0x66069A805d8c96a710B800066FdcEAfdfBcaA248) |
 | GuardedLendingVault | [0x6c7C…73a9](https://explorer.testnet.chain.robinhood.com/address/0x6c7C5100C812e1c95B2D745a33004Ef85E4573a9#code) | [0x99Eb…46EF](https://repo.sourcify.dev/421614/0x99EbFe9eB529cfE13828ba42684761B6920046EF) |
+| SolvencyGatedMorphoOracle (mTSLA) | [0x2090…B988](https://explorer.testnet.chain.robinhood.com/address/0x2090625aFf569f08329Cfe9E1d5c10a4c4A5B988#code) | [0x82f2…89CF](https://repo.sourcify.dev/421614/0x82f291746dcF786ab6b8BF2256641748944189CF) |
+| FixedPriceMorphoOracle (base, 250 USDG/mTSLA) | [0xb505…391B](https://explorer.testnet.chain.robinhood.com/address/0xb50515952ABF6332cdd58F07292357980A1B391B#code) | [0x254B…65cb](https://repo.sourcify.dev/421614/0x254B0D3aC4bA80B5AfADBa73A3c78D2a495E65cb) |
 | TSLA (Robinhood's testnet stock token, not ours) | [0xC9f9…Bd4E](https://explorer.testnet.chain.robinhood.com/address/0xC9f9c86933092BbbfFF3CCb4b105A4A94bf3Bd4E) | home chain only |
 | Full address book | [`deployments/robinhoodTestnet.json`](../deployments/robinhoodTestnet.json) | [`deployments/arbitrumSepolia.json`](../deployments/arbitrumSepolia.json) |
 
@@ -129,7 +171,7 @@ The core contracts share addresses on both chains (identical deployer nonce sequ
 | VAULT-1 | `GuardedLendingVault.withdrawCollateral` was gated even when the borrower had no debt, so a failing proof that never clears (for example an unresolved dispute) locked collateral that backed nothing, contradicting the contract's own "never trap anyone de-risking" rule. | **Fixed.** The solvency check applies only while the caller has debt; regression tests cover a 30-day lock and repay-then-withdraw while insolvent. Both testnet vaults redeployed and re-verified. |
 | SAMPLE-1 | Reserve sampling is operator-only: `ReserveSampler.recordSample` reverts unless the caller is the custodian's operator, so the operator chooses when samples are taken. | **Open, disclosed.** The live-balance floor at read time limits what timing can buy (reserves must still be there when an integrator calls `isSolvent`). Permissionless sampling is future work. |
 
-Merkle-sum verification is property-tested with Foundry fuzzing in CI ([`test/foundry/MerkleSumFuzz.t.sol`](../test/foundry/MerkleSumFuzz.t.sol)). The DisputeModule challenge queue and the ExitRight bond accounting are covered by stateful Foundry invariants ([`DisputeInvariants.t.sol`](../test/foundry/DisputeInvariants.t.sol), [`ExitRightInvariants.t.sol`](../test/foundry/ExitRightInvariants.t.sol)), and every Slither finding is triaged in [SECURITY-SCAN.md](./SECURITY-SCAN.md).
+Foundry fuzzing in CI covers Merkle-sum proofs ([`MerkleSumFuzz.t.sol`](../test/foundry/MerkleSumFuzz.t.sol)), every oracle reason code including sample-dip window dressing, drift and reason priority ([`SolvencyOracleFuzz.t.sol`](../test/foundry/SolvencyOracleFuzz.t.sol)), the lending vault ([`GuardedVaultFuzz.t.sol`](../test/foundry/GuardedVaultFuzz.t.sol)), registry and config ratchets ([`RegistryConfigFuzz.t.sol`](../test/foundry/RegistryConfigFuzz.t.sol)), ledger commits ([`LedgerFuzz.t.sol`](../test/foundry/LedgerFuzz.t.sol)) and the Morpho wrapper ([`MorphoIntegration.t.sol`](../test/foundry/MorphoIntegration.t.sol)). Stateful invariants cover the DisputeModule challenge queue, ExitRight bond accounting and the vault (no borrow while insolvent, repay and debt-free exit never blocked, accounting and LTV always hold), and every Slither finding is triaged in [SECURITY-SCAN.md](./SECURITY-SCAN.md).
 
 ## Residual risks (one-liner for judges)
 

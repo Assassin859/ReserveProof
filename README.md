@@ -3,9 +3,22 @@
 [![CI](https://github.com/Assassin859/ReserveProof/actions/workflows/ci.yml/badge.svg)](https://github.com/Assassin859/ReserveProof/actions/workflows/ci.yml)
 [![Ops epoch](https://github.com/Assassin859/ReserveProof/actions/workflows/ops-epoch.yml/badge.svg)](https://github.com/Assassin859/ReserveProof/actions/workflows/ops-epoch.yml)
 
-Open-source proof of reserves and proof of exit for custodians of **USDG** and **Robinhood Stock Tokens**.
+Open-source proof of reserves and proof of exit for custodians of **USDG** and **Robinhood Stock Tokens**,
+shipped as one modifier any lending market can add: `onlySolvent(asset)`.
 
 **Live demo:** [reserveproof-teal.vercel.app](https://reserveproof-teal.vercel.app) (Kopi Wallet on Robinhood testnet and Arbitrum Sepolia)
+· **134 tests** (`npm run test:count`) · 13 of 13 contracts verified on both testnets
+
+## Why
+
+On Robinhood Chain mainnet today (block 74,929,115, 28 Sep 2026, [`npm run market:size`](scripts/market-size.ts)):
+
+- **672.6M USDG** in circulation and **$157.4M** of tokenized stocks and ETFs (50 ERC-8056 tokens).
+- **167 Morpho Blue markets** lend **750,016 USDG** against those stock tokens, with 375,025 USDG borrowed.
+- **None of them can tell** whether the custodian behind the collateral still holds the shares: a Morpho
+  market only asks its oracle for `price()`.
+
+ReserveProof gives them that signal, fail-closed:
 
 - On-chain reserve reads (multi-sample + live balance)
 - Merkle-sum liabilities with user inclusion / omission proofs
@@ -42,7 +55,7 @@ flowchart LR
 5. **Anyone disputes.** Unanswered inclusion challenges, signed-statement mismatches and equivocation flip the oracle to DISPUTED.
 6. **ExitRight** lets a user with a leaf proof open a bonded withdrawal claim. If the operator doesn't `settle` in time, the bond is slashed to the user and the asset is marked EXIT_DEFAULT.
 
-## Integrate in three lines: `SolvencyGuard`
+## The product: any lending market adds one line, `onlySolvent(asset)`
 
 ```solidity
 import {SolvencyGuard} from "reserveproof/src/guards/SolvencyGuard.sol";
@@ -66,12 +79,35 @@ shows it flipping from Allowed to `Insolvent (STALE)` etc. against the live cont
 | Robinhood testnet | [`0x6c7C…73a9`](https://explorer.testnet.chain.robinhood.com/address/0x6c7C5100C812e1c95B2D745a33004Ef85E4573a9#code) | 10 mTSLA collateral, owes 1 USDG; 4 USDG liquidity |
 | Arbitrum Sepolia | [`0x99Eb…46EF`](https://repo.sourcify.dev/421614/0x99EbFe9eB529cfE13828ba42684761B6920046EF) | 10 mTSLA collateral, no debt (shows the debt-free exit) |
 
+## Morpho Blue: wrap the oracle, not the market
+
+Morpho markets are immutable, so the guard goes in front of the market's oracle:
+[`SolvencyGatedMorphoOracle`](src/integrations/SolvencyGatedMorphoOracle.sol) forwards the base oracle's
+`price()` while the custodian is provably solvent and reverts `Insolvent(reason)` otherwise.
+
+```solidity
+IOracle gated = new SolvencyGatedMorphoOracle(existingOracle, solvencyOracle, custodianId, TSLA);
+// createMarket({loanToken: USDG, collateralToken: TSLA, oracle: gated, irm, lltv})
+```
+
+It reverts instead of returning 0 because a zero price would let liquidators seize every position for
+free. Reverting freezes `borrow`, indebted `withdrawCollateral` and `liquidate`; `supply`, `withdraw`,
+`supplyCollateral`, `repay` and debt-free exits keep working because Morpho skips the oracle for positions
+without debt. [`test/foundry/MorphoIntegration.t.sol`](test/foundry/MorphoIntegration.t.sol) runs each path
+against the unmodified Morpho Blue v1.0.0 core.
+
+| Network | SolvencyGatedMorphoOracle (mTSLA, base 250 USDG) |
+|---|---|
+| Robinhood testnet | [`0x2090…B988`](https://explorer.testnet.chain.robinhood.com/address/0x2090625aFf569f08329Cfe9E1d5c10a4c4A5B988#code) |
+| Arbitrum Sepolia | [`0x82f2…89CF`](https://repo.sourcify.dev/421614/0x82f291746dcF786ab6b8BF2256641748944189CF) |
+
 ## Stack
 
 - Solidity 0.8.24
 - Hardhat (compile / test)
-- **Fuzzed with Foundry:** `forge test` runs property tests on `MerkleSumVerifier` (2–16 leaf trees; honest proofs verify; tampered amounts, siblings, depth, leaf count, user, epoch or asset fail). CI runs both suites. Run `forge install foundry-rs/forge-std --no-git` once before `forge test`.
-- **Invariant-tested + Slither-scanned:** handler-driven invariants on the `DisputeModule` challenge queue and `ExitRight` bond accounting (9 invariants, 16k random calls per CI run), plus a triaged Slither report: [docs/SECURITY-SCAN.md](docs/SECURITY-SCAN.md).
+- **134 tests** (`npm run test:count`, printed in CI): 48 Hardhat, 60 Foundry fuzz properties, 12 Foundry unit tests and 14 stateful invariants.
+- **Fuzzed with Foundry:** property tests on `MerkleSumVerifier`, every `SolvencyOracle` reason code (coverage boundary, sample-dip window dressing, staleness, disputes, split drift, reason priority), the lending vault, registry and config ratchets, ledger commits and the Morpho wrapper inside a real Morpho Blue market.
+- **Invariant-tested + Slither-scanned:** handler-driven invariants on the `DisputeModule` challenge queue, `ExitRight` bond accounting and the vault (no borrow while insolvent; repay and debt-free exit never blocked), plus a triaged Slither report: [docs/SECURITY-SCAN.md](docs/SECURITY-SCAN.md).
 - OpenZeppelin Contracts 5.1.0
 - Next.js + wagmi + viem demo UI (`packages/web`)
 
@@ -85,9 +121,11 @@ npm ci
 npm test
 npm run build
 
-# Foundry fuzz + invariant tests. lib/ is gitignored, so install forge-std once first.
+# Foundry fuzz + invariant tests. lib/ is gitignored, so install the two libraries once first.
 forge install foundry-rs/forge-std --no-git
+forge install morpho-org/morpho-blue@v1.0.0 --no-git
 forge test
+npm run test:count
 ```
 
 ## Kopi Wallet UI

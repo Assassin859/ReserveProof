@@ -17,9 +17,12 @@ export type Deployment = {
     GatedPayout?: `0x${string}`;
     GatedLendWithdraw?: `0x${string}`;
     GuardedLendingVault?: `0x${string}`;
-    MockStockToken: `0x${string}`;
+    FixedPriceMorphoOracle?: `0x${string}`;
+    SolvencyGatedMorphoOracle?: `0x${string}`;
+    /** Testnets only; the mainnet deployment guards real tokens. */
+    MockStockToken?: `0x${string}`;
     USDG: `0x${string}`;
-    /** Robinhood's own testnet Tesla stock token (home chain only). */
+    /** Robinhood's own Tesla stock token (home chain only). */
     TSLA?: `0x${string}`;
   };
   vault?: {
@@ -27,6 +30,26 @@ export type Deployment = {
     collateralPrice: string;
     ltvBps: number;
   };
+  morpho?: {
+    basePrice?: string;
+    baseOracle: `0x${string}`;
+    asset: `0x${string}`;
+  };
+  demoUser?: `0x${string}`;
+};
+
+export type SiteStats = {
+  tests: { total: number; hardhat: number; foundryFuzz: number; foundryUnit: number; invariants: number };
+  market: {
+    block: number;
+    timestamp: string;
+    usdgSupply: number;
+    stockTokens: number;
+    stockSupplyUsd: number;
+    morphoStockMarkets: number;
+    usdgSuppliedAgainstStocks: number;
+    usdgBorrowedAgainstStocks: number;
+  } | null;
 };
 
 export const SCENES = [

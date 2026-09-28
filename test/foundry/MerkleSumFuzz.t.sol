@@ -181,4 +181,81 @@ contract MerkleSumFuzzTest is Test {
             "proof accepted against wrong total"
         );
     }
+
+    function testFuzz_proofDoesNotTransferBetweenLeaves(uint256 seed, uint256 depthRaw, uint256 a, uint256 b) public pure {
+        Tree memory t = _build(seed, depthRaw);
+        uint256 i = bound(a, 0, t.leafCount - 1);
+        uint256 j = bound(b, 0, t.leafCount - 1);
+        vm.assume(i != j);
+        assertFalse(_verify(t, j, t.amounts[j], _proof(t, i)), "leaf j verified with leaf i's path");
+    }
+
+    function testFuzz_leafIndexRecoveredFromProof(uint256 seed, uint256 depthRaw, uint256 idxRaw) public pure {
+        Tree memory t = _build(seed, depthRaw);
+        uint256 i = bound(idxRaw, 0, t.leafCount - 1);
+        assertEq(MerkleSumVerifier.leafIndexFromProof(_proof(t, i)), i);
+    }
+
+    function testFuzz_treeDepthIsLog2(uint8 d) public pure {
+        d = uint8(bound(d, 1, 31));
+        assertEq(MerkleSumVerifier.treeDepthFromLeafCount(uint32(1) << d), d);
+    }
+
+    function testFuzz_anyDepthAcceptsHonestProof(uint256 seed, uint256 depthRaw, uint256 idxRaw) public pure {
+        Tree memory t = _build(seed, depthRaw);
+        uint256 i = bound(idxRaw, 0, t.leafCount - 1);
+        (bytes32 root, uint256 total) = _root(t);
+        assertTrue(
+            MerkleSumVerifier.verifyInclusionAnyDepth(
+                CUSTODIAN, ASSET, EPOCH, t.users[i], t.amounts[i], root, total, t.leafCount, _proof(t, i)
+            )
+        );
+        MerkleSumVerifier.ProofNode[] memory empty;
+        assertFalse(
+            MerkleSumVerifier.verifyInclusionAnyDepth(CUSTODIAN, ASSET, EPOCH, t.users[i], t.amounts[i], root, total, t.leafCount, empty),
+            "empty proof accepted"
+        );
+    }
+
+    function testFuzz_nodeHashIsOrderedAndSumBound(bytes32 l, uint256 ls, bytes32 r, uint256 rs, uint256 d) public pure {
+        vm.assume(l != r || ls != rs);
+        assertTrue(MerkleSumVerifier.nodeHash(l, ls, r, rs) != MerkleSumVerifier.nodeHash(r, rs, l, ls), "swap not detected");
+        d = bound(d, 1, type(uint128).max);
+        vm.assume(ls <= type(uint256).max - d);
+        assertTrue(MerkleSumVerifier.nodeHash(l, ls, r, rs) != MerkleSumVerifier.nodeHash(l, ls + d, r, rs), "sum not bound");
+    }
+
+    function testFuzz_leafAndNodeDomainsSeparated(address user, uint256 amount, bytes32 l, uint256 ls, bytes32 r, uint256 rs)
+        public
+        pure
+    {
+        assertTrue(
+            MerkleSumVerifier.leafHash(CUSTODIAN, ASSET, EPOCH, 4, user, amount) != MerkleSumVerifier.nodeHash(l, ls, r, rs)
+        );
+    }
+
+    function testFuzz_omissionBoundsIffStrictlyBetween(address missing, address left, address right) public pure {
+        bool expected = !(left == address(0) && right == address(0)) && (left == address(0) || left < missing)
+            && (right == address(0) || missing < right);
+        assertEq(MerkleSumVerifier.verifyOmissionBounds(missing, left, right), expected);
+    }
+
+    function testFuzz_omissionAdjacencyOnlyForNeighbours(uint256 seed, uint256 depthRaw, uint256 a, uint256 b) public pure {
+        Tree memory t = _build(seed, depthRaw);
+        uint256 i = bound(a, 0, t.leafCount - 1);
+        uint256 j = bound(b, 0, t.leafCount - 1);
+        MerkleSumVerifier.ProofNode[] memory pi = _proof(t, i);
+        MerkleSumVerifier.ProofNode[] memory pj = _proof(t, j);
+        assertEq(
+            MerkleSumVerifier.verifyOmissionAdjacency(t.users[i], pi, t.users[j], pj, t.leafCount), j == i + 1, "neighbour check"
+        );
+        assertEq(
+            MerkleSumVerifier.verifyOmissionAdjacency(address(0), pi, t.users[i], pi, t.leafCount), i == 0, "left edge"
+        );
+        assertEq(
+            MerkleSumVerifier.verifyOmissionAdjacency(t.users[i], pi, address(0), pi, t.leafCount),
+            i == t.leafCount - 1,
+            "right edge"
+        );
+    }
 }

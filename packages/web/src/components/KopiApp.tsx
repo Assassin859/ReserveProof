@@ -44,6 +44,8 @@ import {
   type ScenarioId,
   type WhatIfOverrides,
 } from "../lib/whatif";
+import { SITE_STATS } from "../lib/mainnet";
+import { MainnetSection } from "./MainnetSection";
 
 type ChainId = 46630 | 421614 | 31337;
 
@@ -602,12 +604,12 @@ export function KopiApp() {
   );
 
   async function runWhatIf(id: ScenarioId) {
-    if (!publicClient || !oracle || !stockArgs || !reserveWallet || !dep) return;
+    if (!publicClient || !oracle || !stockArgs || !asset || !reserveWallet || !dep) return;
     setSimBusy(id);
     const block = await publicClient.getBlock();
     const o = buildOverrides(id, {
       custodianId: dep.custodianId,
-      stockToken: dep.contracts.MockStockToken,
+      stockToken: asset,
       reserveWallet,
       disputes: dep.contracts.DisputeModule,
       now: block.timestamp,
@@ -752,8 +754,9 @@ export function KopiApp() {
           <p className="lede">
             When a custodian fails, customers find out last. ReserveProof puts the proof on-chain instead: the
             custodian commits what it owes, reserves are read straight from its wallets, and anyone can check
-            their own balance. Payout and lending contracts ask one question, <code>isSolvent</code>, and stop
-            automatically the moment the answer is no.
+            their own balance. A lending market adds one modifier, <code>onlySolvent(asset)</code>, or wraps its
+            Morpho oracle, and new borrowing stops automatically the moment the proof fails. Repaying and exiting
+            never do.
           </p>
           <div className="cta-row">
             <button type="button" className="primary" onClick={() => goToScene(SCENE_VERIFY)}>
@@ -771,6 +774,21 @@ export function KopiApp() {
               GitHub
             </a>
           </div>
+          <p className="proof-line">
+            <a href={`${GITHUB_URL}/actions/workflows/ci.yml`} target="_blank" rel="noreferrer">
+              <strong>{SITE_STATS.tests.total} tests</strong>
+            </a>{" "}
+            ({SITE_STATS.tests.hardhat} Hardhat, {SITE_STATS.tests.foundryFuzz} fuzz, {SITE_STATS.tests.invariants}{" "}
+            invariants) · verified on both chains ·{" "}
+            <a
+              href={`${GITHUB_URL}/blob/master/src/integrations/SolvencyGatedMorphoOracle.sol`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Morpho Blue oracle wrapper
+            </a>{" "}
+            tested against the real Morpho core
+          </p>
         </div>
 
         <aside className="status-panel" aria-label="Live status">
@@ -845,6 +863,12 @@ export function KopiApp() {
         </aside>
       </header>
 
+      <MainnetSection />
+
+      <p className="section-kicker">
+        Live demo: Kopi Wallet on {net.label}{" "}
+        <span className="muted-text">· every figure below is read from the chain as you watch</span>
+      </p>
       <section className="live-strip" aria-label="Live proof">
         <div className="strip-cell">
           <span className="label">Latest epoch</span>

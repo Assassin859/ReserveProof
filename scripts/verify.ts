@@ -43,11 +43,23 @@ async function main() {
     ]);
   }
 
+  if (c.FixedPriceMorphoOracle && dep.morpho?.basePrice) {
+    targets.push(["FixedPriceMorphoOracle", c.FixedPriceMorphoOracle, [dep.morpho.basePrice]]);
+  }
+  if (c.SolvencyGatedMorphoOracle && dep.morpho) {
+    targets.push([
+      "SolvencyGatedMorphoOracle",
+      c.SolvencyGatedMorphoOracle,
+      [dep.morpho.baseOracle, c.SolvencyOracle, dep.custodianId, dep.morpho.asset],
+    ]);
+  }
+
   const only = process.env.ONLY?.split(",");
   const delayMs = Number(process.env.VERIFY_DELAY_MS || "5000");
   // Blockscout reports byte-identical redeploys as verified via a "twin"; FORCE=1 submits anyway.
   const force = process.env.FORCE === "1";
   for (const [name, address, constructorArguments] of targets) {
+    if (!address) continue;
     if (only && !only.includes(name)) continue;
     console.log(`\n== ${name} @ ${address}`);
     for (let attempt = 1; attempt <= 3; attempt++) {

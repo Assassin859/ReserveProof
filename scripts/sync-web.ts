@@ -5,6 +5,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { BOOKS, readBook, type AssetKind, type BookLeaf } from "./books";
+import { countTests } from "./test-count";
 
 const CONTRACTS = [
   "AssetConfig",
@@ -63,6 +64,48 @@ for (const network of TESTNETS) {
   if (fs.existsSync(staleProof)) fs.rmSync(staleProof);
 }
 
+// The mainnet slot is always written (null until deployed) so the web build can import it unconditionally.
+const mainnetSrc = path.join(root, "deployments", "robinhoodMainnet.json");
+const mainnetWallets = path.join(root, "deployments", "wallets.mainnet.local.json");
+const mainnetOut = path.join(depOut, "robinhoodMainnet.json");
+const previousMainnet = fs.existsSync(mainnetOut) ? JSON.parse(fs.readFileSync(mainnetOut, "utf8")) : null;
+let mainnet: Record<string, unknown> | null = null;
+if (fs.existsSync(mainnetSrc)) {
+  mainnet = JSON.parse(fs.readFileSync(mainnetSrc, "utf8"));
+  if (mainnet && !mainnet.demoUser) {
+    mainnet.demoUser = fs.existsSync(mainnetWallets)
+      ? JSON.parse(fs.readFileSync(mainnetWallets, "utf8")).demoUser.address
+      : previousMainnet?.demoUser ?? null;
+  }
+}
+fs.writeFileSync(mainnetOut, JSON.stringify(mainnet, null, 2) + "\n");
+console.log(mainnet ? "deployment robinhoodMainnet" : "robinhoodMainnet: not deployed (null slot)");
+
+const tests = countTests();
+const marketFile = path.join(root, "docs", "market-size.json");
+const market = fs.existsSync(marketFile) ? JSON.parse(fs.readFileSync(marketFile, "utf8")) : null;
+const stats = {
+  tests: {
+    total: tests.total,
+    hardhat: tests.hardhat,
+    foundryFuzz: tests.fuzz,
+    foundryUnit: tests.unit - tests.hardhat,
+    invariants: tests.invariant,
+  },
+  market: market && {
+    block: market.block,
+    timestamp: market.timestamp,
+    usdgSupply: market.usdg.totalSupply,
+    stockTokens: market.stockTokens.count,
+    stockSupplyUsd: market.stockTokens.totalSupplyUsd,
+    morphoStockMarkets: market.morpho.stockCollateralMarkets,
+    usdgSuppliedAgainstStocks: market.morpho.usdgSuppliedAgainstStocks,
+    usdgBorrowedAgainstStocks: market.morpho.usdgBorrowedAgainstStocks,
+  },
+};
+fs.writeFileSync(path.join(depOut, "site-stats.json"), JSON.stringify(stats, null, 2) + "\n");
+console.log(`site-stats: ${stats.tests.total} tests${market ? `, market block ${market.block}` : ""}`);
+
 type NetBooks = {
   demoUser: string | null;
   liabilities: Partial<Record<AssetKind, BookLeaf[]>>;
@@ -82,8 +125,13 @@ const books: Record<string, NetBooks> = {};
 for (const [network, assets] of Object.entries(BOOKS)) {
   const liabilities: NetBooks["liabilities"] = {};
   for (const [kind, csv] of Object.entries(assets) as [AssetKind, string][]) {
+    if (!fs.existsSync(csv)) {
+      console.log(`skip ${network}/${kind}: no ${csv}`);
+      continue;
+    }
     liabilities[kind] = readBook(csv);
   }
+  if (Object.keys(liabilities).length === 0 && !previous[network]) continue;
   const exitrightFile = path.join(root, "deployments", `${network}.exitright.json`);
   books[network] = {
     demoUser: network === "localhost" ? null : demoUser ?? previous[network]?.demoUser ?? null,
