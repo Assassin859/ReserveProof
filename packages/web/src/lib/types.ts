@@ -4,6 +4,8 @@ export type Deployment = {
   deployedAt: string;
   deployer: string;
   reserveWallet?: string;
+  /** Liability book behind the mainnet proof; "demo" means our own test accounts, not customers. */
+  book?: { kind: "demo" | "real"; realUsers: number; placeholders: number };
   custodianName: string;
   custodianId: `0x${string}`;
   contracts: {
@@ -34,6 +36,8 @@ export type Deployment = {
     basePrice?: string;
     baseOracle: `0x${string}`;
     asset: `0x${string}`;
+    blockingReasons?: number;
+    maxFreeze?: number;
   };
   demoUser?: `0x${string}`;
 };
@@ -49,6 +53,7 @@ export type SiteStats = {
     morphoStockMarkets: number;
     usdgSuppliedAgainstStocks: number;
     usdgBorrowedAgainstStocks: number;
+    oracles: { distinct: number; priceFeedOnly: number; unclassified: number; reserveProofFeedsFound: number } | null;
   } | null;
 };
 

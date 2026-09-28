@@ -7,16 +7,22 @@ Open-source proof of reserves and proof of exit for custodians of **USDG** and *
 shipped as one modifier any lending market can add: `onlySolvent(asset)`.
 
 **Live demo:** [reserveproof-teal.vercel.app](https://reserveproof-teal.vercel.app) (Kopi Wallet on Robinhood testnet and Arbitrum Sepolia)
-· **134 tests** (`npm run test:count`) · 13 of 13 contracts verified on both testnets
+· **142 tests** (`npm run test:count`) · 13 of 13 contracts verified on both testnets
 
 ## Why
 
-On Robinhood Chain mainnet today (block 74,929,115, 28 Sep 2026, [`npm run market:size`](scripts/market-size.ts)):
+On Robinhood Chain mainnet today (block 75,032,783, 28 Sep 2026, [`npm run market:size`](scripts/market-size.ts),
+raw output in [`docs/market-size.json`](docs/market-size.json)):
 
-- **672.6M USDG** in circulation and **$157.4M** of tokenized stocks and ETFs (50 ERC-8056 tokens).
-- **167 Morpho Blue markets** lend **750,016 USDG** against those stock tokens, with 375,025 USDG borrowed.
-- **None of them can tell** whether the custodian behind the collateral still holds the shares: a Morpho
-  market only asks its oracle for `price()`.
+- **675.5M USDG** in circulation.
+- **50 stock and ETF tokens are used as Morpho collateral**, with **$158.3M** of total supply between them
+  (ERC-8056 tokens only; stock tokens never posted on Morpho aren't counted).
+- **167 Morpho Blue markets** lend USDG against those tokens: **745,012 USDG** supplied, **675,019 USDG**
+  borrowed.
+- **We found no reserve-proof oracle behind any of them.** Of the 167 distinct market oracles, 113 are
+  Morpho's standard Chainlink-style oracle reading price feeds only (none of the feeds describes a reserve
+  proof); the other 54 are custom contracts we couldn't classify. A Morpho market only asks its oracle for
+  `price()`.
 
 ReserveProof gives them that signal, fail-closed:
 
@@ -83,29 +89,44 @@ shows it flipping from Allowed to `Insolvent (STALE)` etc. against the live cont
 
 Morpho markets are immutable, so the guard goes in front of the market's oracle:
 [`SolvencyGatedMorphoOracle`](src/integrations/SolvencyGatedMorphoOracle.sol) forwards the base oracle's
-`price()` while the custodian is provably solvent and reverts `Insolvent(reason)` otherwise.
+`price()` and reverts `Insolvent(reason)` only when there is evidence the custodian is short.
 
 ```solidity
-IOracle gated = new SolvencyGatedMorphoOracle(existingOracle, solvencyOracle, custodianId, TSLA);
+IOracle gated = new SolvencyGatedMorphoOracle(
+    existingOracle, solvencyOracle, custodianId, TSLA,
+    DEFAULT_BLOCKING_REASONS, // LIVE_SHORT, UNDERCOLLATERALIZED, DISPUTED, EXIT_DEFAULT
+    72 hours                  // longest a freeze can last after anyone calls poke()
+);
 // createMarket({loanToken: USDG, collateralToken: TSLA, oracle: gated, irm, lltv})
 ```
 
+The trade-off, stated plainly: Morpho calls `price()` in `borrow`, indebted `withdrawCollateral` and
+`liquidate` alike, so while the wrapper reverts, underwater loans cannot be liquidated either. The wrapper
+limits that in two ways:
+
+- **It blocks only on shortfall evidence.** A missed publish (`STALE`), an unaccounted stock split
+  (`MULTIPLIER_DRIFT`), missing samples or no epoch yet keep forwarding the price, so they never freeze
+  liquidations.
+- **The freeze is bounded.** Anyone can call `poke()` during a blocking failure; `maxFreeze` later the
+  price flows again and liquidations clear, so a custodian can't shield a borrower indefinitely. The freeze
+  is a circuit breaker that buys vault curators time to pull liquidity or set caps to zero.
+
 It reverts instead of returning 0 because a zero price would let liquidators seize every position for
-free. Reverting freezes `borrow`, indebted `withdrawCollateral` and `liquidate`; `supply`, `withdraw`,
-`supplyCollateral`, `repay` and debt-free exits keep working because Morpho skips the oracle for positions
-without debt. [`test/foundry/MorphoIntegration.t.sol`](test/foundry/MorphoIntegration.t.sol) runs each path
-against the unmodified Morpho Blue v1.0.0 core.
+free. `supply`, `withdraw`, `supplyCollateral`, `repay` and debt-free exits always work because Morpho
+skips the oracle for positions without debt.
+[`test/foundry/MorphoIntegration.t.sol`](test/foundry/MorphoIntegration.t.sol) runs each path, including
+liquidation during `STALE` and after the freeze cap, against the unmodified Morpho Blue v1.0.0 core.
 
 | Network | SolvencyGatedMorphoOracle (mTSLA, base 250 USDG) |
 |---|---|
-| Robinhood testnet | [`0x2090…B988`](https://explorer.testnet.chain.robinhood.com/address/0x2090625aFf569f08329Cfe9E1d5c10a4c4A5B988#code) |
-| Arbitrum Sepolia | [`0x82f2…89CF`](https://repo.sourcify.dev/421614/0x82f291746dcF786ab6b8BF2256641748944189CF) |
+| Robinhood testnet | [`0x09a9…A40D`](https://explorer.testnet.chain.robinhood.com/address/0x09a99f5692ce7f714A2e5E859fDB0C3e60FFA40D#code) |
+| Arbitrum Sepolia | [`0x5355…88dc`](https://repo.sourcify.dev/421614/0x53555dCbb4da158ec1A588647dD72f4a62a488dc) |
 
 ## Stack
 
 - Solidity 0.8.24
 - Hardhat (compile / test)
-- **134 tests** (`npm run test:count`, printed in CI): 48 Hardhat, 60 Foundry fuzz properties, 12 Foundry unit tests and 14 stateful invariants.
+- **142 tests** (`npm run test:count`, printed in CI): 49 Hardhat, 61 Foundry fuzz properties, 18 Foundry unit tests and 14 stateful invariants.
 - **Fuzzed with Foundry:** property tests on `MerkleSumVerifier`, every `SolvencyOracle` reason code (coverage boundary, sample-dip window dressing, staleness, disputes, split drift, reason priority), the lending vault, registry and config ratchets, ledger commits and the Morpho wrapper inside a real Morpho Blue market.
 - **Invariant-tested + Slither-scanned:** handler-driven invariants on the `DisputeModule` challenge queue, `ExitRight` bond accounting and the vault (no borrow while insolvent; repay and debt-free exit never blocked), plus a triaged Slither report: [docs/SECURITY-SCAN.md](docs/SECURITY-SCAN.md).
 - OpenZeppelin Contracts 5.1.0

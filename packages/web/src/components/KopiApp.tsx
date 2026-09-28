@@ -23,6 +23,7 @@ import {
   reserveSamplerAbi,
   assetConfigAbi,
   guardedVaultAbi,
+  gatedMorphoOracleAbi,
 } from "../lib/abis";
 import { buildSortedTree, verifyInclusion, type ProofNode } from "../lib/merkle";
 import { reasonLabel } from "../lib/reasons";
@@ -94,7 +95,18 @@ type Verification = { total: number; verified: number; unverified: string[]; unk
 
 type GateResult = "allowed" | string;
 
-type GateRow = { label: string; live: GateResult; sim: GateResult; staysOpen?: boolean };
+type GateKind = "payout" | "withdraw" | "borrow" | "morpho";
+
+type GateRow = {
+  kind: GateKind;
+  label: string;
+  live: GateResult;
+  sim: GateResult;
+  liveText?: string;
+  simText?: string;
+  staysOpen?: boolean;
+  openNote?: string;
+};
 
 type SimResult = {
   id: ScenarioId;
@@ -105,8 +117,23 @@ type SimResult = {
   error?: string;
 };
 
-/** `staysOpen`: the action is deliberately never gated, so "allowed" under a failing proof is correct. */
-type GateProbe = { label: string; to: Address; data: Hex; account: Address; abi: Abi; staysOpen?: boolean };
+/**
+ * `staysOpen`: the action is deliberately not gated in this scenario, so "allowed" under a failing proof
+ * is correct. `format` renders a successful call's return data (e.g. a price) instead of "Allowed".
+ */
+type GateProbe = {
+  kind: GateKind;
+  label: string;
+  to: Address;
+  data: Hex;
+  account: Address;
+  abi: Abi;
+  staysOpen?: boolean;
+  openNote?: string;
+  format?: (ret: Hex) => string;
+};
+
+type ProbeOutcome = { result: GateResult; text?: string };
 
 const ZERO = BigInt(0);
 const BPS = BigInt(10_000);
@@ -186,8 +213,36 @@ function ago(fromSec: bigint | undefined, nowSec: number) {
   return `${Math.round(d / 86400)} days ago`;
 }
 
-function gateLabel(g: GateResult) {
-  return g === "allowed" ? "Allowed" : `Blocked: ${g}`;
+/** One sentence describing only the gates the simulator actually probed on this network. */
+function simSummary(gates: GateRow[], reason: string, network: string, maxFreezeHours?: number) {
+  const find = (k: GateKind) => gates.find((g) => g.kind === k);
+  const parts: string[] = [];
+  const payout = find("payout");
+  if (payout && payout.sim !== "allowed") parts.push("payouts are refused");
+  const borrow = find("borrow");
+  if (borrow && borrow.sim !== "allowed") parts.push("the lending vault stops new borrowing against mTSLA");
+  const withdraw = find("withdraw");
+  if (withdraw && withdraw.sim !== "allowed") parts.push("an indebted borrower can't pull collateral out");
+  const morpho = find("morpho");
+  if (morpho && morpho.sim !== "allowed") {
+    parts.push(
+      `the Morpho oracle stops pricing mTSLA${maxFreezeHours ? ` (for at most ${maxFreezeHours} h once anyone pokes it)` : ""}`
+    );
+  }
+  let text = `The real ${network} contracts react: the oracle reports ${reason}`;
+  text += parts.length ? `, ${parts.join(", ")}.` : ".";
+  if (morpho && morpho.sim === "allowed") {
+    text += ` The Morpho oracle keeps pricing on purpose: ${reason} is not evidence of a shortfall, and freezing it would also freeze liquidations.`;
+  }
+  if (withdraw && withdraw.sim === "allowed") text += " Withdrawing collateral with no debt stays open.";
+  if (borrow || withdraw) text += " Repaying is never blocked.";
+  return text;
+}
+
+function gateLabel(g: GateResult, text?: string, openNote?: string) {
+  if (g !== "allowed") return `Blocked: ${g}`;
+  const base = text ?? "Allowed";
+  return openNote ? `${base} (${openNote})` : base;
 }
 
 export function KopiApp() {
@@ -543,11 +598,12 @@ export function KopiApp() {
     }
   }
 
-  const gateProbes = useCallback(async (): Promise<GateProbe[]> => {
+  const gateProbes = useCallback(async (id: ScenarioId): Promise<GateProbe[]> => {
     const probes: GateProbe[] = [];
     if (!publicClient || !reserveWallet) return probes;
     if (gated) {
       probes.push({
+        kind: "payout",
         label: "GatedPayout.payout (demo user)",
         to: gated,
         account: (net.books.demoUser ?? reserveWallet) as Address,
@@ -567,11 +623,13 @@ export function KopiApp() {
           .catch(() => ZERO),
       ])) as [bigint, bigint];
       probes.push({
+        kind: "withdraw",
         label:
           debt > ZERO
             ? `Lending vault: withdraw mTSLA collateral (borrower owes ${formatUnits(debt, 6)} USDG)`
             : "Lending vault: withdraw mTSLA collateral with no debt",
         staysOpen: debt === ZERO,
+        openNote: debt === ZERO ? "by design" : undefined,
         to: vault,
         account: borrower,
         abi: guardedVaultAbi,
@@ -579,6 +637,7 @@ export function KopiApp() {
       });
       if (liquidity >= USDG_UNIT) {
         probes.push({
+          kind: "borrow",
           label: "Lending vault: borrow 1 USDG against mTSLA",
           to: vault,
           account: borrower,
@@ -587,17 +646,43 @@ export function KopiApp() {
         });
       }
     }
+    const morphoOracle = dep?.contracts.SolvencyGatedMorphoOracle;
+    if (morphoOracle) {
+      const blocked = (await publicClient
+        .readContract({
+          address: morphoOracle,
+          abi: gatedMorphoOracleAbi,
+          functionName: "blocks",
+          args: [SCENARIO_EXPECTED_REASON[id]],
+        })
+        .catch(() => true)) as boolean;
+      probes.push({
+        kind: "morpho",
+        label: "Morpho Blue oracle: SolvencyGatedMorphoOracle.price()",
+        to: morphoOracle,
+        account: reserveWallet,
+        abi: gatedMorphoOracleAbi,
+        data: encodeFunctionData({ abi: gatedMorphoOracleAbi, functionName: "price" }),
+        staysOpen: !blocked,
+        openNote: blocked ? undefined : "by design: liquidations keep working",
+        // Morpho scale: loan units per collateral unit * 1e36; USDG 6 dp, mTSLA 18 dp, so USDG per mTSLA = p / 1e24.
+        format: (ret) => {
+          const n = Number(formatUnits(BigInt(ret), 24));
+          return `${n.toLocaleString("en-US", { maximumFractionDigits: 2 })} USDG per mTSLA`;
+        },
+      });
+    }
     return probes;
   }, [publicClient, gated, reserveWallet, net.books.demoUser, dep]);
 
   const runProbe = useCallback(
-    async (p: GateProbe, o: WhatIfOverrides): Promise<GateResult> => {
-      if (!publicClient) return "unavailable";
+    async (p: GateProbe, o: WhatIfOverrides): Promise<ProbeOutcome> => {
+      if (!publicClient) return { result: "unavailable" };
       try {
-        await publicClient.call({ account: p.account, to: p.to, data: p.data, ...o });
-        return "allowed";
+        const { data } = await publicClient.call({ account: p.account, to: p.to, data: p.data, ...o });
+        return { result: "allowed", text: p.format && data ? p.format(data) : undefined };
       } catch (e) {
-        return revertName(e, p.abi) ?? "reverted";
+        return { result: revertName(e, p.abi) ?? "reverted" };
       }
     },
     [publicClient]
@@ -627,7 +712,7 @@ export function KopiApp() {
       dispute: `stateOverride on DisputeModule ${short(dep.contracts.DisputeModule)}: openDisputeCount[kopi][mTSLA] = 1`,
     };
     try {
-      const probes = await gateProbes();
+      const probes = await gateProbes(id);
       const [liveRaw, simRaw, gates] = await Promise.all([
         publicClient.readContract({ address: oracle, abi: solvencyOracleAbi, functionName: "status", args: stockArgs }),
         publicClient.readContract({
@@ -638,9 +723,18 @@ export function KopiApp() {
           ...o,
         }),
         Promise.all(
-          probes.map(async (p) => {
+          probes.map(async (p): Promise<GateRow> => {
             const [live, simulated] = await Promise.all([runProbe(p, {}), runProbe(p, o)]);
-            return { label: p.label, live, sim: simulated, staysOpen: p.staysOpen };
+            return {
+              kind: p.kind,
+              label: p.label,
+              live: live.result,
+              sim: simulated.result,
+              liveText: live.text,
+              simText: simulated.text,
+              staysOpen: p.staysOpen,
+              openNote: p.openNote,
+            };
           })
         ),
       ]);
@@ -725,8 +819,10 @@ export function KopiApp() {
       : network === "arbitrumSepolia"
         ? `https://repo.sourcify.dev/421614/${oracle}`
         : undefined;
+  const maxFreezeHours = dep?.morpho?.maxFreeze ? Math.round(dep.morpho.maxFreeze / 3600) : undefined;
   const verifiedText = isLocal || !verification ? "—" : `${verification.verified} / ${verification.total}`;
   const verifiedShort = verification !== null && verification.unverified.length > 0;
+  const verifiedUnchecked = verification !== null && verification.unknown > 0;
 
   const txLink = (hash?: string | null) =>
     hash && net.explorer ? (
@@ -778,8 +874,8 @@ export function KopiApp() {
             <a href={`${GITHUB_URL}/actions/workflows/ci.yml`} target="_blank" rel="noreferrer">
               <strong>{SITE_STATS.tests.total} tests</strong>
             </a>{" "}
-            ({SITE_STATS.tests.hardhat} Hardhat, {SITE_STATS.tests.foundryFuzz} fuzz, {SITE_STATS.tests.invariants}{" "}
-            invariants) · verified on both chains ·{" "}
+            ({SITE_STATS.tests.hardhat} Hardhat, {SITE_STATS.tests.foundryFuzz} fuzz, {SITE_STATS.tests.foundryUnit}{" "}
+            Foundry unit, {SITE_STATS.tests.invariants} invariants) · verified on both chains ·{" "}
             <a
               href={`${GITHUB_URL}/blob/master/src/integrations/SolvencyGatedMorphoOracle.sol`}
               target="_blank"
@@ -900,7 +996,14 @@ export function KopiApp() {
         </div>
         <div className="strip-cell">
           <span className="label">Contracts verified</span>
-          <span className={`big ${verifiedShort ? "bad-text" : ""}`}>{verifiedText}</span>
+          <span className={`big ${verifiedShort ? "bad-text" : verifiedUnchecked ? "warn-text" : ""}`}>
+            {verifiedText}
+          </span>
+          {verifiedUnchecked && (
+            <span className="sub warn-text">
+              {verification!.unknown} could not be checked right now
+            </span>
+          )}
           {verifiedHref ? (
             <a
               className="sub"
@@ -1165,10 +1268,14 @@ export function KopiApp() {
                         <tr key={g.label}>
                           <td>{g.label}</td>
                           <td>
-                            <span className={`pill ${g.live === "allowed" ? "ok" : "bad"}`}>{gateLabel(g.live)}</span>
+                            <span className={`pill ${g.live === "allowed" ? "ok" : "bad"}`}>
+                              {gateLabel(g.live, g.liveText)}
+                            </span>
                           </td>
                           <td>
-                            <span className={`pill ${g.sim === "allowed" ? "ok" : "bad"}`}>{gateLabel(g.sim)}</span>
+                            <span className={`pill ${g.sim === "allowed" ? "ok" : "bad"}`}>
+                              {gateLabel(g.sim, g.simText, g.staysOpen ? g.openNote : undefined)}
+                            </span>
                           </td>
                         </tr>
                       ))}
@@ -1179,12 +1286,7 @@ export function KopiApp() {
                   sim.reason === SCENARIO_EXPECTED_REASON[sim.id] &&
                   sim.gates.length > 0 &&
                   sim.gates.every((g) => (g.staysOpen ? g.sim === "allowed" : g.sim !== "allowed")) && (
-                    <p className="result">
-                      The real {net.label} contracts fail closed: the oracle reports{" "}
-                      <strong>{reasonLabel(sim.reason ?? undefined)}</strong>, payouts are refused and the lending
-                      vault stops lending against mTSLA until the custodian fixes it. Repaying, and withdrawing
-                      collateral once the loan is repaid, are never blocked.
-                    </p>
+                    <p className="result">{simSummary(sim.gates, reasonLabel(sim.reason ?? undefined), net.label, maxFreezeHours)}</p>
                   )}
                 <button type="button" className="ghost" onClick={() => setSim(null)}>
                   Reset

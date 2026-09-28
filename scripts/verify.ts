@@ -50,7 +50,14 @@ async function main() {
     targets.push([
       "SolvencyGatedMorphoOracle",
       c.SolvencyGatedMorphoOracle,
-      [dep.morpho.baseOracle, c.SolvencyOracle, dep.custodianId, dep.morpho.asset],
+      [
+        dep.morpho.baseOracle,
+        c.SolvencyOracle,
+        dep.custodianId,
+        dep.morpho.asset,
+        dep.morpho.blockingReasons,
+        dep.morpho.maxFreeze,
+      ],
     ]);
   }
 

@@ -166,9 +166,9 @@ export function MainnetSection() {
           </p>
           <div className="live-strip numbers">
             <div className="strip-cell">
-              <span className="label">Tokenized stocks</span>
+              <span className="label">Stock tokens used as Morpho collateral</span>
               <span className="big">{usd(m.stockSupplyUsd)}</span>
-              <span className="sub">{m.stockTokens} stock and ETF tokens</span>
+              <span className="sub">total supply of {m.stockTokens} stock and ETF tokens</span>
             </div>
             <div className="strip-cell">
               <span className="label">USDG in circulation</span>
@@ -183,9 +183,15 @@ export function MainnetSection() {
               </span>
             </div>
             <div className="strip-cell">
-              <span className="label">Markets that check reserves</span>
-              <span className="big bad-text">0 of {m.morphoStockMarkets}</span>
-              <span className="sub">each asks its oracle for price() only</span>
+              <span className="label">Reserve-proof oracles found</span>
+              <span className="big bad-text">
+                {m.oracles && m.oracles.reserveProofFeedsFound > 0 ? m.oracles.reserveProofFeedsFound : "None"}
+              </span>
+              <span className="sub">
+                {m.oracles
+                  ? `${m.oracles.priceFeedOnly} of ${m.oracles.distinct} oracles read price feeds only; ${m.oracles.unclassified} unclassified`
+                  : "Morpho asks each oracle for price() only"}
+              </span>
             </div>
           </div>
           {FAILURES.length > 0 && (
@@ -213,6 +219,15 @@ export function MainnetSection() {
               contracts as the demo below.
             </span>
           </div>
+          {MAINNET.book?.kind !== "real" && (
+            <p className="warn-text">
+              Demo book: the liabilities are{" "}
+              {MAINNET.book
+                ? `${MAINNET.book.realUsers} real wallet we control and ${MAINNET.book.placeholders} placeholder addresses`
+                : "our own test accounts"}
+              , not customer balances. The reserves and the on-chain checks are real.
+            </p>
+          )}
           {error && <p className="muted-text">Mainnet read failed: {error}</p>}
           <div className="mainnet-rows">
             {(rows ?? []).map((r) => {

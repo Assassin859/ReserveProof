@@ -72,6 +72,6 @@ function print(rows: Row[], total: number, hardhatTotal: number, totals: { unit:
   }
   console.log(
     `\n${total} tests: ${hardhatTotal} Hardhat + ${total - hardhatTotal} Foundry ` +
-      `(${totals.fuzz} fuzz, ${totals.invariant} invariants, ${totals.unit} unit)`
+      `(${totals.fuzz} fuzz, ${totals.unit - hardhatTotal} unit, ${totals.invariant} invariants)`
   );
 }

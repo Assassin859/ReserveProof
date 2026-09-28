@@ -28,6 +28,16 @@ const TOKEN_ABI = [
   "function uiMultiplier() view returns (uint256)",
 ];
 const ORACLE_ABI = ["function price() view returns (uint256)"];
+/** MorphoChainlinkOracleV2 getters: an oracle answering these prices from feeds and vaults only. */
+const ORACLE_V2_ABI = [
+  "function BASE_FEED_1() view returns (address)",
+  "function BASE_FEED_2() view returns (address)",
+  "function QUOTE_FEED_1() view returns (address)",
+  "function QUOTE_FEED_2() view returns (address)",
+  "function BASE_VAULT() view returns (address)",
+];
+const FEED_ABI = ["function description() view returns (string)"];
+const ZERO = "0x0000000000000000000000000000000000000000";
 
 type Token = { address: string; symbol: string; decimals: number; totalSupply: bigint; inMorpho: bigint; stock: boolean };
 
@@ -124,6 +134,43 @@ async function main() {
   const usdgSupplied = stockMarkets.reduce((s, m) => s + m.supply, 0n);
   const usdgBorrowed = stockMarkets.reduce((s, m) => s + m.borrow, 0n);
 
+  // Classify every distinct oracle behind the stock/USDG markets. A MorphoChainlinkOracleV2 prices only
+  // from its feeds and vault; record the feed descriptions so a reserve-proof feed would show up.
+  const oracleAddrs = [...new Set(stockMarkets.map((m) => m.oracle.toLowerCase()))];
+  const feedDescriptions = new Map<string, number>();
+  const classified = await inBatches(oracleAddrs, 10, async (addr) => {
+    const o = new Contract(addr, ORACLE_V2_ABI, provider);
+    try {
+      const feeds: string[] = await Promise.all([
+        o.BASE_FEED_1({ blockTag }),
+        o.BASE_FEED_2({ blockTag }),
+        o.QUOTE_FEED_1({ blockTag }),
+        o.QUOTE_FEED_2({ blockTag }),
+      ]);
+      await o.BASE_VAULT({ blockTag });
+      for (const f of feeds.filter((x) => x !== ZERO)) {
+        const d: string = await new Contract(f, FEED_ABI, provider).description({ blockTag }).catch(() => "(no description)");
+        feedDescriptions.set(d, (feedDescriptions.get(d) ?? 0) + 1);
+      }
+      return "priceFeedOnly" as const;
+    } catch {
+      return "unclassified" as const;
+    }
+  });
+  const descriptions = [...feedDescriptions.entries()].sort((a, b) => b[1] - a[1]);
+  const reserveLike = descriptions.filter(([d]) => /reserve|proof|por\b/i.test(d));
+  const oracles = {
+    distinct: oracleAddrs.length,
+    priceFeedOnly: classified.filter((c) => c === "priceFeedOnly").length,
+    unclassified: classified.filter((c) => c === "unclassified").length,
+    reserveProofFeedsFound: reserveLike.length,
+    feedDescriptions: Object.fromEntries(descriptions.slice(0, 25)),
+    method:
+      "Each oracle probed for the MorphoChainlinkOracleV2 getters (BASE_FEED_1/2, QUOTE_FEED_1/2, BASE_VAULT); " +
+      "answering oracles price only from those feeds and vault. Feed description() strings are searched for " +
+      "reserve / proof / PoR. Unclassified oracles use some other contract and were not inspected further.",
+  };
+
   const stocks = [...tokens.values()]
     .filter((t) => t.stock)
     .map((t) => {
@@ -150,7 +197,8 @@ async function main() {
     timestamp: new Date(head.timestamp * 1000).toISOString(),
     method:
       "Morpho market ids from api.morpho.org (discovery only); all figures read on chain at `block`. " +
-      "Stock tokens = Morpho collateral answering ERC-8056 uiMultiplier(). USD prices = the market's own " +
+      "Stock tokens = tokens used as Morpho collateral that answer ERC-8056 uiMultiplier() (stock tokens never " +
+      "used as Morpho collateral are not counted). USD prices = the market's own " +
       "Morpho oracle price() in USDG (1 USDG = $1). Stocks without an answering oracle are listed unpriced.",
     usdg: { address: USDG, totalSupply: Number(formatUnits(usdgSupply, 6)) },
     stockTokens: {
@@ -165,7 +213,8 @@ async function main() {
       stockCollateralMarkets: stockMarkets.length,
       usdgSuppliedAgainstStocks: Number(formatUnits(usdgSupplied, 6)),
       usdgBorrowedAgainstStocks: Number(formatUnits(usdgBorrowed, 6)),
-      note: "Morpho Blue asks an oracle only for price(); nothing in these markets reads the custodian's reserves.",
+      note: "Morpho Blue asks an oracle only for price(). See `oracles` for what the markets' oracles read.",
+      oracles,
     },
     stocks,
   };
@@ -182,6 +231,11 @@ async function main() {
       `${doc.morpho.usdgSuppliedAgainstStocks.toLocaleString("en-US")} USDG supplied, ` +
       `${doc.morpho.usdgBorrowedAgainstStocks.toLocaleString("en-US")} borrowed`
   );
+  console.log(
+    `Oracles: ${oracles.distinct} distinct, ${oracles.priceFeedOnly} price-feed only (MorphoChainlinkOracleV2), ` +
+      `${oracles.unclassified} unclassified, ${oracles.reserveProofFeedsFound} reserve-proof-looking feeds`
+  );
+  for (const [d, n] of descriptions.slice(0, 8)) console.log(`  feed "${d}" x${n}`);
   for (const s of stocks.slice(0, 12)) {
     console.log(
       `  ${s.symbol.padEnd(6)} supply ${s.totalSupply.toFixed(2).padStart(12)}  $${String(s.supplyUsd ?? "?").padStart(14)}  ` +

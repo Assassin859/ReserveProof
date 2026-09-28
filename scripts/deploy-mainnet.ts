@@ -109,6 +109,7 @@ async function main() {
         contracts: { USDG },
         steps: {},
       };
+  dep.book = { kind: "demo", realUsers: 1, placeholders: PLACEHOLDERS.length };
   const c = dep.contracts;
 
   async function deploy(name: string, args: unknown[]) {

@@ -1,19 +1,25 @@
 {
   "tests": {
-    "total": 134,
-    "hardhat": 48,
-    "foundryFuzz": 60,
-    "foundryUnit": 12,
+    "total": 142,
+    "hardhat": 49,
+    "foundryFuzz": 61,
+    "foundryUnit": 18,
     "invariants": 14
   },
   "market": {
-    "block": 74929115,
-    "timestamp": "2026-09-28T16:08:31.000Z",
-    "usdgSupply": 672649046.080558,
+    "block": 75032783,
+    "timestamp": "2026-09-28T19:01:58.000Z",
+    "usdgSupply": 675505342.14712,
     "stockTokens": 50,
-    "stockSupplyUsd": 157361898.79,
+    "stockSupplyUsd": 158322344.6,
     "morphoStockMarkets": 167,
-    "usdgSuppliedAgainstStocks": 750016.005749,
-    "usdgBorrowedAgainstStocks": 375024.96928
+    "usdgSuppliedAgainstStocks": 745011.529995,
+    "usdgBorrowedAgainstStocks": 675018.779287,
+    "oracles": {
+      "distinct": 167,
+      "priceFeedOnly": 113,
+      "unclassified": 54,
+      "reserveProofFeedsFound": 0
+    }
   }
 }

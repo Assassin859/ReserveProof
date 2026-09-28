@@ -309,6 +309,11 @@ a.sub:hover {
   color: #e8a090;
 }
 
+.warn-text,
+.strip-cell .sub.warn-text {
+  color: #e6c47a;
+}
+
 .section-kicker {
   margin: 0 0 0.55rem;
   font-size: 0.78rem;

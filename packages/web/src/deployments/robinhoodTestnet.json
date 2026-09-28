@@ -27,7 +27,7 @@
     "GuardedLendingVault": "0x6c7C5100C812e1c95B2D745a33004Ef85E4573a9",
     "TSLA": "0xC9f9c86933092BbbfFF3CCb4b105A4A94bf3Bd4E",
     "FixedPriceMorphoOracle": "0xb50515952ABF6332cdd58F07292357980A1B391B",
-    "SolvencyGatedMorphoOracle": "0x2090625aFf569f08329Cfe9E1d5c10a4c4A5B988"
+    "SolvencyGatedMorphoOracle": "0x09a99f5692ce7f714A2e5E859fDB0C3e60FFA40D"
   },
   "vault": {
     "demoBorrower": "0x4F38186806e8e3c96Cf39ae13F3231639DaD15Ba",
@@ -37,6 +37,8 @@
   "morpho": {
     "basePrice": "250000000000000000000000000",
     "baseOracle": "0xb50515952ABF6332cdd58F07292357980A1B391B",
-    "asset": "0x66069A805d8c96a710B800066FdcEAfdfBcaA248"
+    "asset": "0x66069A805d8c96a710B800066FdcEAfdfBcaA248",
+    "blockingReasons": 360,
+    "maxFreeze": 259200
   }
 }

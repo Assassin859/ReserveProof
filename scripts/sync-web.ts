@@ -19,6 +19,7 @@ const CONTRACTS = [
   "MockStockToken",
   "MockUSDG",
   "ReserveSampler",
+  "SolvencyGatedMorphoOracle",
   "SolvencyOracle",
 ];
 
@@ -101,6 +102,14 @@ const stats = {
     morphoStockMarkets: market.morpho.stockCollateralMarkets,
     usdgSuppliedAgainstStocks: market.morpho.usdgSuppliedAgainstStocks,
     usdgBorrowedAgainstStocks: market.morpho.usdgBorrowedAgainstStocks,
+    oracles: market.morpho.oracles
+      ? {
+          distinct: market.morpho.oracles.distinct,
+          priceFeedOnly: market.morpho.oracles.priceFeedOnly,
+          unclassified: market.morpho.oracles.unclassified,
+          reserveProofFeedsFound: market.morpho.oracles.reserveProofFeedsFound,
+        }
+      : null,
   },
 };
 fs.writeFileSync(path.join(depOut, "site-stats.json"), JSON.stringify(stats, null, 2) + "\n");

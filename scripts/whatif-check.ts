@@ -102,12 +102,35 @@ async function main() {
     }
   };
 
+  // The gated Morpho oracle blocks only on shortfall reasons; others must keep returning the base price.
+  const morpho = c.SolvencyGatedMorphoOracle
+    ? await ethers.getContractAt("SolvencyGatedMorphoOracle", c.SolvencyGatedMorphoOracle)
+    : undefined;
+  const priceData = morpho?.interface.encodeFunctionData("price");
+  const morphoSel = morpho?.interface.getError("Insolvent")!.selector;
+  const morphoResult = async (o: { state?: object; block?: object }) => {
+    if (!morpho) return "";
+    try {
+      const ret = await call(c.SolvencyGatedMorphoOracle, priceData!, o);
+      return `price=${Number(BigInt(ret) / 10n ** 22n) / 100}`;
+    } catch (e) {
+      const m = JSON.stringify(e).match(new RegExp(`${morphoSel!.slice(2)}([0-9a-f]{64})`, "i"));
+      return m ? `Insolvent(${Number(BigInt("0x" + m[1]))})` : `reverted (${(e as Error).message.slice(0, 80)})`;
+    }
+  };
+
   let failed = 0;
   const base = await reasonOf({});
   const baseVault = await Promise.all(vaultProbes.map(async ([n, d]) => `${n}=${await vaultResult(d, {})}`));
-  console.log(`${net} baseline: reason=${base} payout=${await payoutResult({})} ${baseVault.join(" ")}`);
+  const baseMorpho = await morphoResult({});
+  console.log(
+    `${net} baseline: reason=${base} payout=${await payoutResult({})} ${baseVault.join(" ")}${
+      morpho ? ` morpho.${baseMorpho}` : ""
+    }`
+  );
   if (base !== 0) console.log("  note: live oracle is not OK, so scenario results below may be masked");
   if (baseVault.some((v) => !v.endsWith("=allowed"))) failed++;
+  if (morpho && !baseMorpho.startsWith("price=")) failed++;
 
   for (const id of Object.keys(SCENARIO_EXPECTED_REASON) as ScenarioId[]) {
     const o = overrides(id);
@@ -116,19 +139,29 @@ async function main() {
     let pay: string;
     let vaultRes: string[] = [];
     let vaultOk = false;
+    let morphoRes = "";
+    let morphoOk = !morpho;
     try {
       reason = await reasonOf(o);
       pay = await payoutResult(o);
       const results = await Promise.all(vaultProbes.map(async ([, d]) => vaultResult(d, o)));
       vaultRes = results.map((r, i) => `${vaultProbes[i][0]}=${r}`);
       vaultOk = results.every((r, i) => (vaultProbes[i][2] ? r === "allowed" : r === `Insolvent(${want})`));
+      if (morpho) {
+        const blocked = await morpho.blocks(want);
+        morphoRes = await morphoResult(o);
+        morphoOk = blocked ? morphoRes === `Insolvent(${want})` : morphoRes.startsWith("price=");
+        morphoRes = ` morpho.${morphoRes}${blocked ? "" : " (non-blocking reason)"}`;
+      }
     } catch (e) {
       reason = `ERR ${(e as Error).message.slice(0, 100)}`;
       pay = "-";
     }
-    const ok = reason === want && pay === "Insolvent" && vaultOk;
+    const ok = reason === want && pay === "Insolvent" && vaultOk && morphoOk;
     if (!ok) failed++;
-    console.log(`${ok ? "PASS" : "FAIL"} ${id}: reason=${reason} (want ${want}) payout=${pay} ${vaultRes.join(" ")}`);
+    console.log(
+      `${ok ? "PASS" : "FAIL"} ${id}: reason=${reason} (want ${want}) payout=${pay} ${vaultRes.join(" ")}${morphoRes}`
+    );
   }
   if (failed) {
     console.error(`${failed} scenario(s) failed`);
