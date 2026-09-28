@@ -109,7 +109,7 @@ Persona: **Kopi Wallet** (fictional SEA custodian). Everything below runs on the
 
 | t | Scene | What judges see |
 |---|---|---|
-| 0–10s | Hero + mainnet numbers | $157M of stock tokens and 673M USDG on Robinhood Chain mainnet, 750K USDG lent against stocks in 167 Morpho markets, 0 of them checking reserves; 134 tests under the CTAs. Once deployed, the green *live on mainnet* card: real USDG (and TSLA) in our own reserve wallet, solvent, with explorer links |
+| 0–10s | Hero + mainnet numbers | $157M of stock tokens and 673M USDG on Robinhood Chain mainnet, 750K USDG lent against stocks in 167 Morpho markets, 0 of them checking reserves; 134 tests under the CTAs |
 | 10–15s | Live strip | Latest epoch, last publish time, 200% coverage vs the 103% floor, 13/13 contracts verified; mTSLA, USDG and real TSLA all solvent |
 | 15–20s | 1 One wallet, one custodian | The reserve wallet is bound to Kopi; a second custodian would revert `WalletTaken` |
 | 20–30s | 2 Liabilities vs reserves | Owed 500 mTSLA, live reserves 1,000 mTSLA, coverage above the floor → solvent |
