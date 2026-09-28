@@ -4,6 +4,20 @@
 
 See [VERIFY.md](./VERIFY.md) for how to check every claim below yourself.
 
+## By the numbers
+
+| | |
+|---|---|
+| Chains live | **2**: Robinhood Chain testnet (home) and Arbitrum Sepolia |
+| Contracts verified | **11 of 11 on each chain**: Blockscout on Robinhood, Sourcify exact match on Arbitrum |
+| Assets under proof | **3** on Robinhood: mTSLA (ERC-8056 mock), USDG, and Robinhood's real testnet **TSLA** stock token ([`0xC9f9…Bd4E`](https://explorer.testnet.chain.robinhood.com/address/0xC9f9c86933092BbbfFF3CCb4b105A4A94bf3Bd4E)); mTSLA is also allocated on Arbitrum |
+| Epochs committed | **10** across 4 books, re-published every 3 days by the [ops workflow](https://github.com/Assassin859/ReserveProof/actions/workflows/ops-epoch.yml) |
+| Tests | **40** Hardhat, **5** Foundry fuzz properties, **9** Foundry invariants (128 runs × depth 64, `fail_on_revert`), plus Slither triage: [SECURITY-SCAN.md](./SECURITY-SCAN.md) |
+| Integrations gated on solvency | **2**: `GatedPayout` and `GuardedLendingVault` (drop-in `onlySolvent` modifier, [SolvencyGuard](../src/guards/SolvencyGuard.sol)) |
+| ExitRight | Live bonded claim opened by the demo user and **settled on-chain** (tx links below) |
+| Try it | [What-if simulator](https://reserveproof-teal.vercel.app): make the custodian misbehave on the real contracts, no wallet, no gas |
+| Publishing cost | about 0.00001 ETH per asset per cycle, so roughly 0.0012 ETH per asset per year at a 3-day cadence |
+
 ## Idea field (285 characters — locked)
 
 > ReserveProof: open-source proof of reserves for custodians of USDG and Robinhood Stock Tokens. Reserves read on-chain across Robinhood Chain and Arbitrum, Merkle-sum liabilities with user fraud proofs, and a fail-closed isSolvent(custodian, asset) that payouts and lending can require.
@@ -24,7 +38,25 @@ See [VERIFY.md](./VERIFY.md) for how to check every claim below yourself.
 | Summa | Strong PoL ideas; we ship open contracts + CLI + fail-closed oracle for stock-token / USDG custodians |
 | Accountable | Closed / productized; we stay open-source, dual-chain allocations, ERC-8056 multiplier drift, ExitRight |
 
-**Who pays (honest):** mid-tier and SEA fintech custodians (demo persona **Kopi Wallet**) that need auditable backing without building a full ZK stack. Not “retail pays gas for vibes” — operators fund publishing; users verify inclusion for free off-chain / light RPC.
+## Business model
+
+The contracts, CLI and verifier stay MIT-licensed. Revenue comes from running the operator side well and from the integrations that depend on it. Users never pay: they verify their own balance in the browser against a public RPC.
+
+| Who pays | Why they pay | Pricing sketch |
+|---|---|---|
+| **Custodians** (mid-tier and SEA fintechs holding USDG and stock tokens; demo persona Kopi Wallet) | Auditable backing without building a ZK stack or hiring an audit firm every quarter; a solvency status that partners can gate on | Hosted operator: book ingestion, epoch publishing, sampling, monitoring and alerting. Per asset per month, with a free self-hosted tier. On-chain cost is negligible (see above), so pricing is value-based |
+| **Stock-token and RWA issuers** | Distributors holding their tokens can prove backing, and ERC-8056 multiplier drift after a corporate action is caught automatically | Annual issuer licence covering every custodian that lists the token, plus a verified-backing badge for distributor apps |
+| **Lending and payout protocols** | One `onlySolvent(asset)` modifier fails closed on shortfall, stale data, split drift, disputes or exit default, with no oracle committee to trust | Reading the oracle is free forever, which drives adoption. Paid tier: cross-chain status relay, keeper-triggered market pauses and an SLA'd alert feed |
+
+The wedge is the free integrator side: every protocol that gates on `isSolvent` gives custodians a reason to publish.
+
+## Grant milestone plan
+
+| # | Milestone | Deliverables | Done when |
+|---|---|---|---|
+| 1 | **Permissionless sampling** (closes SAMPLE-1) | Anyone can call `recordSample` in randomised windows, with a small keeper reward from the custodian's fee deposit; operator-only mode kept as a fallback | Invariant suite extended to non-operator samplers; deployed on both testnets; the ops workflow runs as a third-party keeper |
+| 2 | **Paginated equivocation settlement** (closes SETTLE-1) | `openEquivocationDispute` settles challenges in bounded batches with a resumable cursor, so no challenge count can push it past the block gas limit | Gas test with 5,000 open challenges; FIFO and dispute invariants still pass; external review of `DisputeModule` |
+| 3 | **Mainnet pilot** | Robinhood Chain and Arbitrum One deployment with one partner custodian on real USDG and stock tokens, plus one lending integration using `SolvencyGuard` | 90 days of uninterrupted epochs, a public status page, and a post-pilot report on coverage, incidents and costs |
 
 ## Tracks
 
@@ -39,11 +71,11 @@ Persona: **Kopi Wallet** (fictional SEA custodian). Everything below runs on the
 
 | t | Scene | What judges see |
 |---|---|---|
-| 0–10s | Hero + live strip | Latest epoch, last publish time, 200% coverage vs the 103% floor, 10/10 contracts verified |
+| 0–10s | Hero + live strip | Latest epoch, last publish time, 200% coverage vs the 103% floor, 11/11 contracts verified; mTSLA, USDG and real TSLA all solvent |
 | 10–20s | 1 One wallet, one custodian | The reserve wallet is bound to Kopi; a second custodian would revert `WalletTaken` |
 | 20–30s | 2 Liabilities vs reserves | Owed 500 mTSLA, live reserves 1,000 mTSLA, coverage above the floor → solvent |
-| 30–45s | 3 Verify my balance | *Try demo user* → browser rebuilds the tree, root matches on-chain, leaf proven |
-| 45–85s | 4 What-if simulator | Drain → `LIVE_SHORT`, skip 8 days → `STALE`, stock split → `MULTIPLIER_DRIFT`, fraud dispute → `DISPUTED`; each time `GatedPayout` flips from Allowed to `Insolvent` |
+| 30–45s | 3 Verify my balance | *Try demo user* → browser rebuilds the tree, root matches on-chain, leaf proven; switch to TSLA to prove 1.5 real TSLA |
+| 45–85s | 4 What-if simulator | Drain → `LIVE_SHORT`, skip 8 days → `STALE`, stock split → `MULTIPLIER_DRIFT`, fraud dispute → `DISPUTED`; each time `GatedPayout` and the lending vault (withdraw collateral, borrow USDG) flip from Allowed to `Insolvent (reason)`, while repay stays open |
 | 85–100s | 5 ExitRight | Live bonded claim opened by the demo user and settled by the operator, with explorer links |
 
 Local rehearsal with real state changes (no testnet gas):
@@ -57,7 +89,7 @@ npm run demo:web          # http://localhost:3000
 
 ## Live deployment
 
-The same addresses on both chains (identical deployer nonce sequence). Robinhood: all 10 contracts verified on Blockscout (`npm run verify:rh`). Arbitrum Sepolia: all 10 exact-match on Sourcify (`npm run verify:sourcify`).
+The core contracts share addresses on both chains (identical deployer nonce sequence); the lending vault was deployed later and differs per chain. Robinhood: all 11 contracts verified on Blockscout (`npm run verify:rh`). Arbitrum Sepolia: all 11 exact-match on Sourcify (`npm run verify:sourcify`).
 
 | Contract | Robinhood testnet | Arbitrum Sepolia |
 |---|---|---|
@@ -69,6 +101,8 @@ The same addresses on both chains (identical deployer nonce sequence). Robinhood
 | ExitRight | [0x2726…EfB6](https://explorer.testnet.chain.robinhood.com/address/0x272644a119088A096F7fDBFE76da71fF01C0EfB6#code) | [Sourcify](https://repo.sourcify.dev/421614/0x272644a119088A096F7fDBFE76da71fF01C0EfB6) |
 | GatedPayout | [0xed67…a430](https://explorer.testnet.chain.robinhood.com/address/0xed67EC461D64e42ed1472d3d74cbb32ee143a430#code) | [Sourcify](https://repo.sourcify.dev/421614/0xed67EC461D64e42ed1472d3d74cbb32ee143a430) |
 | MockStockToken (mTSLA) | [0x6606…A248](https://explorer.testnet.chain.robinhood.com/address/0x66069A805d8c96a710B800066FdcEAfdfBcaA248#code) | [Sourcify](https://repo.sourcify.dev/421614/0x66069A805d8c96a710B800066FdcEAfdfBcaA248) |
+| GuardedLendingVault | [0x3405…31a3](https://explorer.testnet.chain.robinhood.com/address/0x34058dc47D9D107622C265B6767A96A7DC2031a3#code) | [0xfC18…68Fe](https://repo.sourcify.dev/421614/0xfC18e00Be3fE26d5F280CF3A6006A664D5F868Fe) |
+| TSLA (Robinhood's testnet stock token, not ours) | [0xC9f9…Bd4E](https://explorer.testnet.chain.robinhood.com/address/0xC9f9c86933092BbbfFF3CCb4b105A4A94bf3Bd4E) | home chain only |
 | Full address book | [`deployments/robinhoodTestnet.json`](../deployments/robinhoodTestnet.json) | [`deployments/arbitrumSepolia.json`](../deployments/arbitrumSepolia.json) |
 
 | Event | Link |
@@ -94,7 +128,7 @@ The same addresses on both chains (identical deployer nonce sequence). Robinhood
 | ADV-1 | Capital borrowed or flash-held for the whole sampling window can inflate reserves. | **Open, disclosed.** Samples take the minimum across distinct `arbBlockNumber` values with a minimum time gap, and the oracle then takes `min(sampleMin, live balance)`. This narrows the attack to capital held across every sample plus the read, but does not eliminate it. |
 | SAMPLE-1 | Reserve sampling is operator-only: `ReserveSampler.recordSample` reverts unless the caller is the custodian's operator, so the operator chooses when samples are taken. | **Open, disclosed.** The live-balance floor at read time limits what timing can buy (reserves must still be there when an integrator calls `isSolvent`). Permissionless sampling is future work. |
 
-Merkle-sum verification is property-tested with Foundry fuzzing in CI ([`test/foundry/MerkleSumFuzz.t.sol`](../test/foundry/MerkleSumFuzz.t.sol)).
+Merkle-sum verification is property-tested with Foundry fuzzing in CI ([`test/foundry/MerkleSumFuzz.t.sol`](../test/foundry/MerkleSumFuzz.t.sol)). The DisputeModule challenge queue and the ExitRight bond accounting are covered by stateful Foundry invariants ([`DisputeInvariants.t.sol`](../test/foundry/DisputeInvariants.t.sol), [`ExitRightInvariants.t.sol`](../test/foundry/ExitRightInvariants.t.sol)), and every Slither finding is triaged in [SECURITY-SCAN.md](./SECURITY-SCAN.md).
 
 ## Residual risks (one-liner for judges)
 
