@@ -5,6 +5,8 @@
 
 Open-source proof of reserves and proof of exit for custodians of **USDG** and **Robinhood Stock Tokens**.
 
+**Live demo:** [reserveproof-teal.vercel.app](https://reserveproof-teal.vercel.app) (Kopi Wallet on Robinhood testnet and Arbitrum Sepolia)
+
 - On-chain reserve reads (multi-sample + live balance)
 - Merkle-sum liabilities with user inclusion / omission proofs
 - Fail-closed `isSolvent(custodianId, asset)` that payouts and lending can `require`

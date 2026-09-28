@@ -1,5 +1,7 @@
 # Hackathon submission — ReserveProof (+ ExitRight)
 
+**Live demo:** [reserveproof-teal.vercel.app](https://reserveproof-teal.vercel.app) · **Repo:** https://github.com/Assassin859/ReserveProof
+
 See [VERIFY.md](./VERIFY.md) for how to check every claim below yourself.
 
 ## Idea field (285 characters — locked)
@@ -80,6 +82,7 @@ The same addresses on both chains (identical deployer nonce sequence). Robinhood
 | Robinhood — ExitRight `settle` #0 (operator) | [0x8fec…e2e9](https://explorer.testnet.chain.robinhood.com/tx/0x8fec3e59a1824b8d09da32529f27454a2c56e1344ecc5d56c18708ce8679e2e9) |
 | ExitRight record | [`deployments/robinhoodTestnet.exitright.json`](../deployments/robinhoodTestnet.exitright.json) |
 | Scheduled re-publishing | [Ops epoch workflow](https://github.com/Assassin859/ReserveProof/actions/workflows/ops-epoch.yml) (every 3 days); [first run](https://github.com/Assassin859/ReserveProof/actions/runs/36323953179) published epoch 2 on both chains |
+| Live app | [reserveproof-teal.vercel.app](https://reserveproof-teal.vercel.app) |
 | Demo video | _TODO_ |
 | Repo | https://github.com/Assassin859/ReserveProof |
 
