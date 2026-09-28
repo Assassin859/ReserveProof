@@ -9,7 +9,8 @@
   "deploymentSalt": "0xc7d76c488931762563365bc1e1338602b045b5d98bfe6d41a15735b66339b12c",
   "assetIds": {
     "stock": "0x0a8f1f385fed9c77a2e0daa363ccc865e971bdbe4458bb570cc0acb068d7c0f2",
-    "usdg": "0x50c06f78ad2e5bdc0d81007456f70e6c87ac46669280a41f915860e5145b02ea"
+    "usdg": "0x50c06f78ad2e5bdc0d81007456f70e6c87ac46669280a41f915860e5145b02ea",
+    "tsla": "0x43d6c895d63bb130d827945ef4d51ac7324d734e46db97552dc162f483c4bace"
   },
   "contracts": {
     "CustodianRegistry": "0x364c1D50910e3FadED506d38FabeAFc828C30F9E",
@@ -23,7 +24,8 @@
     "GatedLendWithdraw": "0xE4B526f9b8216852FD186E6a633446BD1834D7C7",
     "MockStockToken": "0x66069A805d8c96a710B800066FdcEAfdfBcaA248",
     "USDG": "0x7E955252E15c84f5768B83c41a71F9eba181802F",
-    "GuardedLendingVault": "0x34058dc47D9D107622C265B6767A96A7DC2031a3"
+    "GuardedLendingVault": "0x34058dc47D9D107622C265B6767A96A7DC2031a3",
+    "TSLA": "0xC9f9c86933092BbbfFF3CCb4b105A4A94bf3Bd4E"
   },
   "vault": {
     "demoBorrower": "0x4F38186806e8e3c96Cf39ae13F3231639DaD15Ba",

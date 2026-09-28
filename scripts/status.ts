@@ -1,5 +1,5 @@
 /**
- * Print SolvencyOracle status for the deployment's mock stock and USDG assets, plus any
+ * Print SolvencyOracle status for every asset in the deployment (mTSLA, USDG, TSLA), plus any
  * unsettled ExitRight claims (a claim left past its deadline can be slashed, which sets
  * EXIT_DEFAULT on that asset permanently).
  * Usage: npx hardhat run scripts/status.ts --network <net>
@@ -9,7 +9,7 @@ import hre from "hardhat";
 import { ethers } from "hardhat";
 import * as fs from "fs";
 import * as path from "path";
-import { BOOKS } from "./books";
+import { BOOKS, type AssetKind } from "./books";
 
 const REASONS: Record<number, string> = {
   0: "OK",
@@ -31,10 +31,13 @@ async function main() {
   const oracle = await ethers.getContractAt("SolvencyOracle", dep.contracts.SolvencyOracle);
   const ledger = await ethers.getContractAt("LiabilityLedger", dep.contracts.LiabilityLedger);
   const books = BOOKS[net] ?? {};
-  const assets = [
-    ["mTSLA", dep.contracts.MockStockToken, "stock"],
-    ["USDG", dep.contracts.USDG, "usdg"],
-  ] as const;
+  const assets = (
+    [
+      ["mTSLA", dep.contracts.MockStockToken, "stock"],
+      ["USDG", dep.contracts.USDG, "usdg"],
+      ["TSLA", dep.contracts.TSLA, "tsla"],
+    ] as const
+  ).filter(([, addr]) => Boolean(addr)) as [string, string, AssetKind][];
 
   for (const [label, asset, kind] of assets) {
     const latest = await ledger.latestEpochId(dep.custodianId, asset);

@@ -10,7 +10,7 @@ import { ethers } from "hardhat";
 import * as fs from "fs";
 import * as path from "path";
 import { buildSortedTree } from "../packages/merkle/src/index";
-import { BOOKS, readBook, type AssetKind } from "./books";
+import { BOOKS, assetAddress, readBook, type AssetKind } from "./books";
 import { publishEpoch } from "./publish-epoch";
 import { recordSamples } from "./record-samples";
 
@@ -22,12 +22,37 @@ async function main() {
   if (!books) throw new Error(`No liability books configured for ${net}`);
 
   const only = process.env.ASSETS?.split(",").map((s) => s.trim()) as AssetKind[] | undefined;
-  const kinds = (Object.keys(books) as AssetKind[]).filter((k) => !only || only.includes(k));
+  const kinds = (Object.keys(books) as AssetKind[]).filter((k) => {
+    if (only && !only.includes(k)) return false;
+    if (!assetAddress(dep, k)) {
+      console.log(`skip ${k}: no token address in the deployment yet`);
+      return false;
+    }
+    return true;
+  });
   const ledger = await ethers.getContractAt("LiabilityLedger", dep.contracts.LiabilityLedger);
   const oracle = await ethers.getContractAt("SolvencyOracle", dep.contracts.SolvencyOracle);
-  const assetOf = (k: AssetKind) => (k === "stock" ? dep.contracts.MockStockToken : dep.contracts.USDG) as string;
+  const assetOf = (k: AssetKind) => assetAddress(dep, k)!;
+
+  // Publish and sample each asset as a unit: a new epoch without samples reads INSUFFICIENT_SAMPLES,
+  // so one asset failing must not leave another committed but unsampled.
+  const failed: string[] = [];
+  for (const kind of kinds) {
+    try {
+      await cycleAsset(kind);
+    } catch (e) {
+      failed.push(kind);
+      console.error(`!! ${net} ${kind} failed: ${(e as Error).message}`);
+    }
+  }
 
   for (const kind of kinds) {
+    const s = await oracle.status(dep.custodianId, assetOf(kind));
+    console.log(`${net} ${kind}: ok=${s.ok} reason=${s.reason} epoch=${s.epochId}`);
+  }
+  if (failed.length) throw new Error(`cycle failed for: ${failed.join(", ")}`);
+
+  async function cycleAsset(kind: AssetKind) {
     const asset = assetOf(kind);
     const next = Number(await ledger.latestEpochId(dep.custodianId, asset)) + 1;
     const leaves = readBook(books[kind]!).map((l) => ({ user: l.user, amount: BigInt(l.amount) }));
@@ -63,16 +88,8 @@ async function main() {
 
     console.log(`\n== ${net} ${kind}: epoch ${next} ==`);
     await publishEpoch({ rootDoc, dep });
-  }
-
-  for (const kind of kinds) {
     console.log(`\n== ${net} ${kind}: samples ==`);
-    await recordSamples({ dep, asset: assetOf(kind) });
-  }
-
-  for (const kind of kinds) {
-    const s = await oracle.status(dep.custodianId, assetOf(kind));
-    console.log(`${net} ${kind}: ok=${s.ok} reason=${s.reason} epoch=${s.epochId}`);
+    await recordSamples({ dep, asset });
   }
 }
 

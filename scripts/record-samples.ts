@@ -6,7 +6,7 @@
  *
  * Env:
  *   DEPLOYMENT=./deployments/localhost.json
- *   ASSET=stock|usdg|<address>  (default stock)
+ *   ASSET=stock|usdg|tsla|<address>  (default stock)
  *   SAMPLES=2
  *   WALLET=  (optional; defaults to deployment.reserveWallet)
  */
@@ -14,6 +14,7 @@ import hre from "hardhat";
 import { ethers } from "hardhat";
 import * as fs from "fs";
 import * as path from "path";
+import { assetAddress, type AssetKind } from "./books";
 
 export async function recordSamples(opts: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -66,9 +67,7 @@ async function main() {
   }
   const dep = JSON.parse(fs.readFileSync(depPath, "utf8"));
   const assetEnv = (process.env.ASSET || "stock").toLowerCase();
-  const asset = (
-    assetEnv === "stock" ? dep.contracts.MockStockToken : assetEnv === "usdg" ? dep.contracts.USDG : process.env.ASSET
-  ) as string;
+  const asset = (assetAddress(dep, assetEnv as AssetKind) ?? process.env.ASSET) as string;
   await recordSamples({
     dep,
     asset,

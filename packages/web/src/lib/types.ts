@@ -19,6 +19,8 @@ export type Deployment = {
     GuardedLendingVault?: `0x${string}`;
     MockStockToken: `0x${string}`;
     USDG: `0x${string}`;
+    /** Robinhood's own testnet Tesla stock token (home chain only). */
+    TSLA?: `0x${string}`;
   };
   vault?: {
     demoBorrower: `0x${string}`;

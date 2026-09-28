@@ -4,7 +4,7 @@ import booksJson from "../deployments/books.json";
 import type { Deployment } from "./types";
 
 export type NetworkKey = "robinhoodTestnet" | "arbitrumSepolia" | "localhost";
-export type AssetKind = "stock" | "usdg";
+export type AssetKind = "stock" | "usdg" | "tsla";
 
 export type BookLeaf = { user: string; amount: string };
 
@@ -74,6 +74,7 @@ export const DEMO_VIDEO_URL = process.env.NEXT_PUBLIC_DEMO_VIDEO_URL || "";
 export const ASSET_META: Record<AssetKind, { label: string; decimals: number }> = {
   stock: { label: "mTSLA", decimals: 18 },
   usdg: { label: "USDG", decimals: 6 },
+  tsla: { label: "TSLA", decimals: 18 },
 };
 
 export function defaultNetwork(): NetworkKey {

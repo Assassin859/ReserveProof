@@ -249,7 +249,8 @@ export function KopiApp() {
   const gated = dep?.contracts.GatedPayout;
   const exitRight = dep?.contracts.ExitRight;
   const reserveWallet = dep?.reserveWallet as Address | undefined;
-  const assetAddr = (kind: AssetKind) => (kind === "stock" ? asset : usdg);
+  const tsla = dep?.contracts.TSLA;
+  const assetAddr = (kind: AssetKind) => (kind === "stock" ? asset : kind === "usdg" ? usdg : tsla);
   const stockArgs = custodianId && asset ? ([custodianId, asset] as const) : undefined;
 
   const { data: status, refetch: refetchStatus } = useReadContract({
@@ -268,6 +269,15 @@ export function KopiApp() {
     chainId,
     args: custodianId && usdg ? [custodianId, usdg] : undefined,
     query: { enabled: Boolean(oracle && custodianId && usdg), refetchInterval: 30_000 },
+  });
+
+  const { data: tslaStatus, refetch: refetchTsla } = useReadContract({
+    address: oracle,
+    abi: solvencyOracleAbi,
+    functionName: "status",
+    chainId,
+    args: custodianId && tsla ? [custodianId, tsla] : undefined,
+    query: { enabled: Boolean(oracle && custodianId && tsla), refetchInterval: 30_000 },
   });
 
   const { data: epochId } = useReadContract({
@@ -308,6 +318,7 @@ export function KopiApp() {
 
   const parsed = useMemo(() => parseStatus(status), [status]);
   const parsedUsdg = useMemo(() => parseStatus(usdgStatus), [usdgStatus]);
+  const parsedTsla = useMemo(() => parseStatus(tslaStatus), [tslaStatus]);
   const epochData = useMemo(() => parseEpoch(epoch), [epoch]);
   const usdgHomeOnly = network === "arbitrumSepolia" && !net.books.liabilities.usdg;
   const floorBps = (stockConfig as { coverageFloorBps?: number } | undefined)?.coverageFloorBps;
@@ -321,6 +332,7 @@ export function KopiApp() {
   function refreshAll() {
     void refetchStatus();
     void refetchUsdg();
+    void refetchTsla();
     void refetchReserves();
   }
 
@@ -353,7 +365,7 @@ export function KopiApp() {
       return { latest: Number(latest), ep, addr };
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [publicClient, ledger, custodianId, asset, usdg]
+    [publicClient, ledger, custodianId, asset, usdg, tsla]
   );
 
   function fillDemoUser() {
@@ -373,7 +385,9 @@ export function KopiApp() {
       setBalError(
         balAsset === "usdg" && network === "arbitrumSepolia"
           ? "USDG is home-chain only: its leaves bind Robinhood's USDG address, so the USDG book is published on Robinhood testnet."
-          : `No ${label} liability book is published on ${net.label}.`
+          : balAsset === "tsla" && network !== "robinhoodTestnet"
+            ? "TSLA is Robinhood's own testnet stock token, so its book is published on Robinhood testnet."
+            : `No ${label} liability book is published on ${net.label}.`
       );
       return;
     }
@@ -659,8 +673,8 @@ export function KopiApp() {
       : network === "arbitrumSepolia"
         ? `https://repo.sourcify.dev/421614/${oracle}`
         : undefined;
-  // Every deployed contract except the external Paxos USDG token is ours and source-verified.
-  const ownContracts = dep ? Object.keys(dep.contracts).filter((k) => k !== "USDG").length : 0;
+  // Everything except the external tokens (Paxos USDG, Robinhood TSLA) is ours and source-verified.
+  const ownContracts = dep ? Object.keys(dep.contracts).filter((k) => k !== "USDG" && k !== "TSLA").length : 0;
 
   const txLink = (hash?: string | null) =>
     hash && net.explorer ? (
@@ -748,6 +762,19 @@ export function KopiApp() {
                 </span>
                 <span className="value mono">{parsedUsdg ? reasonLabel(parsedUsdg.reason) : ""}</span>
               </span>
+            )}
+          </div>
+          <div className="stat">
+            <span className="label">TSLA custody (real Robinhood stock token)</span>
+            {tsla ? (
+              <span className="row">
+                <span className={`pill ${parsedTsla?.ok ? "ok" : "bad"}`}>
+                  {parsedTsla ? (parsedTsla.ok ? "solvent" : "insolvent") : "—"}
+                </span>
+                <span className="value mono">{parsedTsla ? reasonLabel(parsedTsla.reason) : ""}</span>
+              </span>
+            ) : (
+              <span className="value muted-text">published on Robinhood</span>
             )}
           </div>
           <div className="stat">
@@ -876,7 +903,7 @@ export function KopiApp() {
         {scene === SCENE_VERIFY && (
           <div className="actions">
             <div className="row">
-              {(["stock", "usdg"] as AssetKind[]).map((k) => (
+              {(["stock", "usdg", "tsla"] as AssetKind[]).map((k) => (
                 <button
                   key={k}
                   type="button"
