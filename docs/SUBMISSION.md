@@ -32,22 +32,21 @@ See [VERIFY.md](./VERIFY.md) for how to check every claim below yourself.
 - **Overall Prize** — stretch; Robinhood Chain deploy for reserved-seat eligibility
 - Robinhood reserved seat: deployed and verified on Robinhood testnet (see VERIFY.md)
 
-## Demo script (~100 seconds) — eight scenes
+## Demo script (~100 seconds), all on the hosted site
 
-Persona: **Kopi Wallet** (fictional SEA custodian).
+Persona: **Kopi Wallet** (fictional SEA custodian). Everything below runs on the live testnet contracts at
+[reserveproof-teal.vercel.app](https://reserveproof-teal.vercel.app) with no wallet and no gas.
 
 | t | Scene | What judges see |
 |---|---|---|
-| 0–10s | 1 Duplicate wallet | Exclusive reserve wallet — second claim rejected (`WalletTaken`) |
-| 10–20s | 2 Epoch @ 103% | Live testnet: mTSLA and USDG both `isSolvent true` / `OK` |
-| 20–35s | 3 Verify my balance | *Try demo user* → browser rebuilds the tree, root matches on-chain, leaf proven |
-| 35–50s | 4 Drain | Local: reserves emptied → `GatedPayout` blocked / `LIVE_SHORT` |
-| 50–60s | 5 Multiplier | Local: `uiMultiplier` moves → `MULTIPLIER_DRIFT` |
-| 60–70s | 6 Stale | Local: time warp → `STALE` |
-| 70–85s | 7 Dispute | Local: mismatch fraud proof → `DISPUTED` |
-| 85–100s | 8 ExitRight | Live testnet: bonded claim opened by the demo user and settled by the operator |
+| 0–10s | Hero + live strip | Latest epoch, last publish time, 200% coverage vs the 103% floor, 10/10 contracts verified |
+| 10–20s | 1 One wallet, one custodian | The reserve wallet is bound to Kopi; a second custodian would revert `WalletTaken` |
+| 20–30s | 2 Liabilities vs reserves | Owed 500 mTSLA, live reserves 1,000 mTSLA, coverage above the floor → solvent |
+| 30–45s | 3 Verify my balance | *Try demo user* → browser rebuilds the tree, root matches on-chain, leaf proven |
+| 45–85s | 4 What-if simulator | Drain → `LIVE_SHORT`, skip 8 days → `STALE`, stock split → `MULTIPLIER_DRIFT`, fraud dispute → `DISPUTED`; each time `GatedPayout` flips from Allowed to `Insolvent` |
+| 85–100s | 5 ExitRight | Live bonded claim opened by the demo user and settled by the operator, with explorer links |
 
-Local rehearsal (no testnet gas):
+Local rehearsal with real state changes (no testnet gas):
 
 ```bash
 npm run demo:node         # terminal A

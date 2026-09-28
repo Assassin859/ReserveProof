@@ -18,6 +18,8 @@
     "wallets": "ts-node scripts/make-wallets.ts",
     "status:rh": "hardhat run scripts/status.ts --network robinhoodTestnet",
     "status:arb": "hardhat run scripts/status.ts --network arbitrumSepolia",
+    "whatif:check:rh": "hardhat run scripts/whatif-check.ts --network robinhoodTestnet",
+    "whatif:check:arb": "hardhat run scripts/whatif-check.ts --network arbitrumSepolia",
     "ops:cycle:rh": "hardhat run scripts/ops-cycle.ts --network robinhoodTestnet",
     "ops:cycle:arb": "hardhat run scripts/ops-cycle.ts --network arbitrumSepolia",
     "exitright:setup": "hardhat run scripts/exitright-setup.ts --network robinhoodTestnet",

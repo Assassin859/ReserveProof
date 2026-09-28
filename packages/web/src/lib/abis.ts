@@ -6,6 +6,8 @@ import gatedAbi from "../abi/GatedPayout.json";
 import disputesAbi from "../abi/DisputeModule.json";
 import stockAbi from "../abi/MockStockToken.json";
 import exitAbi from "../abi/ExitRight.json";
+import samplerAbi from "../abi/ReserveSampler.json";
+import assetConfigJson from "../abi/AssetConfig.json";
 
 export const custodianRegistryAbi = registryAbi.abi as Abi;
 export const solvencyOracleAbi = oracleAbi.abi as Abi;
@@ -14,3 +16,5 @@ export const gatedPayoutAbi = gatedAbi.abi as Abi;
 export const disputeModuleAbi = disputesAbi.abi as Abi;
 export const mockStockAbi = stockAbi.abi as Abi;
 export const exitRightAbi = exitAbi.abi as Abi;
+export const reserveSamplerAbi = samplerAbi.abi as Abi;
+export const assetConfigAbi = assetConfigJson.abi as Abi;

@@ -64,17 +64,22 @@ forge test
 
 ## Kopi Wallet UI
 
-`npm run demo:web` → http://localhost:3000. The UI opens on the live **Robinhood testnet** deployment
-(switch to **Arbitrum Sepolia** or **Local Hardhat** in the header). The header shows mTSLA and USDG
-solvency side by side. Set `NEXT_PUBLIC_DEFAULT_NETWORK=localhost` to open on the local node instead.
+Hosted at [reserveproof-teal.vercel.app](https://reserveproof-teal.vercel.app), or `npm run demo:web` →
+http://localhost:3000. The UI opens on the live **Robinhood testnet** deployment (switch to **Arbitrum
+Sepolia** in the header). A live strip shows the latest epoch, when it was published, mTSLA coverage
+against the 103% floor, and contract verification. **Local Hardhat** is offered only under `next dev`
+(`packages/web/.env.development`), so the hosted site never calls 127.0.0.1.
 
-On testnet:
-
-- **Scene 3, Verify my balance:** enter an address (or press *Try demo user*). The browser rebuilds the
+- **Verify my balance:** enter an address (or press *Try demo user*). The browser rebuilds the
   Merkle-sum tree from the published book for the latest on-chain epoch, shows your leaf and proof path,
-  and checks the computed root against the committed one. Pasting a CLI proof JSON is under *Advanced*.
-- **Scene 8, ExitRight:** live bond, in-flight bond, claim count and the recorded claim-and-settle
-  transactions on Robinhood.
+  and checks the computed root against the committed one.
+- **What-if simulator:** *Drain reserves*, *Skip 8 days*, *Stock split* and *Fraud dispute* each run a
+  read-only `eth_call` against the live contracts with one storage slot or the block time overridden, and
+  show the oracle flip to LIVE_SHORT, STALE, MULTIPLIER_DRIFT or DISPUTED while `GatedPayout` reverts
+  `Insolvent`. No wallet, no gas. `npm run whatif:check:rh` / `whatif:check:arb` asserts the same four
+  results from the command line.
+- **ExitRight:** live bond, in-flight bond, claim count and the recorded claim-and-settle transactions on
+  Robinhood.
 
 After redeploying, publishing or changing contracts, run `npm run web:sync` to refresh the UI's ABIs,
 testnet address books, liability books and ExitRight record.

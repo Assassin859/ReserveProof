@@ -24,13 +24,15 @@ export type Deployment = {
 export const SCENES = [
   {
     id: 1,
-    title: "Duplicate wallet rejected",
-    blurb: "A reserve address already claimed by another custodian cannot be re-registered.",
+    title: "One wallet, one custodian",
+    blurb:
+      "A reserve wallet can back only one custodian. Trying to count the same wallet for a second custodian is rejected on-chain, so reserves can't be double-counted.",
   },
   {
     id: 2,
-    title: "Epoch at 103% coverage",
-    blurb: "Operator commits a Merkle-sum root with allocation covered at the coverage floor.",
+    title: "Liabilities vs reserves",
+    blurb:
+      "Each epoch the custodian commits what it owes as a Merkle-sum root. The oracle only reports solvent while live reserves cover that allocation by at least the coverage floor.",
   },
   {
     id: 3,
@@ -40,28 +42,18 @@ export const SCENES = [
   },
   {
     id: 4,
-    title: "Reserves drained → payout blocked",
-    blurb: "When live reserves fall short, GatedPayout / GatedLendWithdraw fail closed.",
+    title: "What-if simulator",
+    blurb:
+      "Make the custodian misbehave and watch the real contracts react. Each button runs a read-only simulated call against the live deployment with one thing changed. Nothing is signed or sent, and no wallet is needed.",
   },
   {
     id: 5,
-    title: "Multiplier drift",
-    blurb: "ERC-8056 uiMultiplier changes without a recommit → MULTIPLIER_DRIFT.",
-  },
-  {
-    id: 6,
-    title: "Stale oracle",
-    blurb: "Past maxOracleAge the status flips to STALE. Local: npm run demo:warp.",
-  },
-  {
-    id: 7,
-    title: "Fraud dispute",
-    blurb: "Mismatch between signed statement and tree opens DISPUTED until cleared.",
-  },
-  {
-    id: 8,
     title: "ExitRight claim",
     blurb:
       "A user with a leaf proof opens a bonded withdrawal claim. The operator must settle before the deadline, or anyone can slash the bond and the oracle flips to EXIT_DEFAULT for good.",
   },
 ] as const;
+
+export const SCENE_VERIFY = 3;
+export const SCENE_WHATIF = 4;
+export const SCENE_EXIT = 5;

@@ -61,7 +61,15 @@ export const NETWORKS: Record<NetworkKey, NetworkInfo> = {
   },
 };
 
-export const NETWORK_KEYS = Object.keys(NETWORKS) as NetworkKey[];
+/** The local Hardhat network is only offered in `next dev` (see .env.development). */
+export const LOCAL_ENABLED = process.env.NEXT_PUBLIC_ENABLE_LOCAL === "1";
+
+export const NETWORK_KEYS = (Object.keys(NETWORKS) as NetworkKey[]).filter(
+  (k) => k !== "localhost" || LOCAL_ENABLED
+);
+
+export const GITHUB_URL = "https://github.com/Assassin859/ReserveProof";
+export const DEMO_VIDEO_URL = process.env.NEXT_PUBLIC_DEMO_VIDEO_URL || "";
 
 export const ASSET_META: Record<AssetKind, { label: string; decimals: number }> = {
   stock: { label: "mTSLA", decimals: 18 },
@@ -70,5 +78,5 @@ export const ASSET_META: Record<AssetKind, { label: string; decimals: number }> 
 
 export function defaultNetwork(): NetworkKey {
   const env = process.env.NEXT_PUBLIC_DEFAULT_NETWORK as NetworkKey | undefined;
-  return env && env in NETWORKS ? env : "robinhoodTestnet";
+  return env && NETWORK_KEYS.includes(env) ? env : "robinhoodTestnet";
 }

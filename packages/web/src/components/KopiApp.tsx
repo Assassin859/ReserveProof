@@ -1,19 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  useReadContract,
-  usePublicClient,
-  useWriteContract,
-  useAccount,
-  useConnect,
-} from "wagmi";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useReadContract, usePublicClient, useAccount } from "wagmi";
 import {
   BaseError,
   ContractFunctionRevertedError,
+  decodeErrorResult,
+  encodeFunctionData,
   formatUnits,
   getAddress,
   isAddress,
+  type Abi,
   type Address,
   type Hex,
 } from "viem";
@@ -23,18 +20,29 @@ import {
   liabilityLedgerAbi,
   gatedPayoutAbi,
   exitRightAbi,
+  reserveSamplerAbi,
+  assetConfigAbi,
 } from "../lib/abis";
 import { buildSortedTree, verifyInclusion, type ProofNode } from "../lib/merkle";
 import { reasonLabel } from "../lib/reasons";
-import { SCENES, type Deployment } from "../lib/types";
+import { SCENES, SCENE_EXIT, SCENE_VERIFY, SCENE_WHATIF, type Deployment } from "../lib/types";
 import {
   ASSET_META,
+  DEMO_VIDEO_URL,
+  GITHUB_URL,
   NETWORKS,
   NETWORK_KEYS,
   defaultNetwork,
   type AssetKind,
   type NetworkKey,
 } from "../lib/deployments";
+import {
+  SCENARIOS,
+  SCENARIO_EXPECTED_REASON,
+  buildOverrides,
+  type ScenarioId,
+  type WhatIfOverrides,
+} from "../lib/whatif";
 
 type ChainId = 46630 | 421614 | 31337;
 
@@ -79,6 +87,22 @@ type ExitInfo = {
   };
 };
 
+type GateResult = "allowed" | string;
+
+type SimResult = {
+  id: ScenarioId;
+  detail: string;
+  liveReason: number | null;
+  reason: number | null;
+  livePayout: GateResult;
+  payout: GateResult;
+  error?: string;
+};
+
+const ZERO = BigInt(0);
+const BPS = BigInt(10_000);
+const VERIFIED_CONTRACTS = 10;
+
 function short(addr?: string) {
   if (!addr) return "—";
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
@@ -108,17 +132,46 @@ function parseEpoch(raw: unknown): EpochView | null {
   return { ...e, leafCount: Number(e.leafCount) };
 }
 
-function revertName(e: unknown): string | undefined {
-  if (e instanceof BaseError) {
-    const revert = e.walk((err) => err instanceof ContractFunctionRevertedError);
-    if (revert instanceof ContractFunctionRevertedError) return revert.data?.errorName;
+function revertName(e: unknown, abi?: Abi): string | undefined {
+  if (!(e instanceof BaseError)) return undefined;
+  const revert = e.walk((err) => err instanceof ContractFunctionRevertedError);
+  if (revert instanceof ContractFunctionRevertedError && revert.data?.errorName) return revert.data.errorName;
+  if (!abi) return undefined;
+  const withData = e.walk((err) => typeof (err as { data?: unknown }).data === "string") as
+    | { data?: Hex }
+    | null;
+  if (withData?.data) {
+    try {
+      return decodeErrorResult({ abi, data: withData.data }).errorName;
+    } catch {
+      return undefined;
+    }
   }
   return undefined;
 }
 
-function fmt(amount: bigint | undefined, kind: AssetKind) {
-  if (amount === undefined) return "—";
-  return `${formatUnits(amount, ASSET_META[kind].decimals)} ${ASSET_META[kind].label}`;
+function amount(value: bigint | undefined, kind: AssetKind) {
+  if (value === undefined) return "—";
+  const n = Number(formatUnits(value, ASSET_META[kind].decimals));
+  return `${n.toLocaleString("en-US", { maximumFractionDigits: 2 })} ${ASSET_META[kind].label}`;
+}
+
+function percent(bps: bigint | undefined | null) {
+  if (bps === undefined || bps === null) return "—";
+  return `${(Number(bps) / 100).toLocaleString("en-US", { maximumFractionDigits: 1 })}%`;
+}
+
+function ago(fromSec: bigint | undefined, nowSec: number) {
+  if (!fromSec || fromSec === ZERO) return "—";
+  const d = Math.max(0, nowSec - Number(fromSec));
+  if (d < 90) return "just now";
+  if (d < 3600) return `${Math.round(d / 60)} min ago`;
+  if (d < 172800) return `${Math.round(d / 3600)} h ago`;
+  return `${Math.round(d / 86400)} days ago`;
+}
+
+function gateLabel(g: GateResult) {
+  return g === "allowed" ? "Allowed" : `Blocked: ${g}`;
 }
 
 export function KopiApp() {
@@ -135,15 +188,22 @@ export function KopiApp() {
   const [balError, setBalError] = useState<string | null>(null);
   const [balBusy, setBalBusy] = useState(false);
   const [exitInfo, setExitInfo] = useState<ExitInfo | null>(null);
+  const [sim, setSim] = useState<SimResult | null>(null);
+  const [simBusy, setSimBusy] = useState<ScenarioId | null>(null);
+  const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
+  const scenesRef = useRef<HTMLElement>(null);
 
   const net = NETWORKS[network];
   const isLocal = network === "localhost";
   const chainId = dep?.chainId as ChainId | undefined;
 
   const { address, isConnected } = useAccount();
-  const { connect, connectors } = useConnect();
   const publicClient = usePublicClient({ chainId });
-  const { writeContractAsync } = useWriteContract();
+
+  useEffect(() => {
+    const t = setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), 30_000);
+    return () => clearInterval(t);
+  }, []);
 
   const refreshDep = useCallback(async () => {
     if (net.deployment) {
@@ -173,26 +233,30 @@ export function KopiApp() {
   const oracle = dep?.contracts.SolvencyOracle;
   const registry = dep?.contracts.CustodianRegistry;
   const ledger = dep?.contracts.LiabilityLedger;
+  const sampler = dep?.contracts.ReserveSampler;
+  const assetConfig = dep?.contracts.AssetConfig;
   const gated = dep?.contracts.GatedPayout;
   const exitRight = dep?.contracts.ExitRight;
+  const reserveWallet = dep?.reserveWallet as Address | undefined;
   const assetAddr = (kind: AssetKind) => (kind === "stock" ? asset : usdg);
+  const stockArgs = custodianId && asset ? ([custodianId, asset] as const) : undefined;
 
   const { data: status, refetch: refetchStatus } = useReadContract({
     address: oracle,
     abi: solvencyOracleAbi,
     functionName: "status",
     chainId,
-    args: custodianId && asset ? [custodianId, asset] : undefined,
-    query: { enabled: Boolean(oracle && custodianId && asset), refetchInterval: 4000 },
+    args: stockArgs,
+    query: { enabled: Boolean(oracle && stockArgs), refetchInterval: 15_000 },
   });
 
-  const { data: usdgStatus } = useReadContract({
+  const { data: usdgStatus, refetch: refetchUsdg } = useReadContract({
     address: oracle,
     abi: solvencyOracleAbi,
     functionName: "status",
     chainId,
     args: custodianId && usdg ? [custodianId, usdg] : undefined,
-    query: { enabled: Boolean(oracle && custodianId && usdg), refetchInterval: 8000 },
+    query: { enabled: Boolean(oracle && custodianId && usdg), refetchInterval: 30_000 },
   });
 
   const { data: epochId } = useReadContract({
@@ -200,8 +264,8 @@ export function KopiApp() {
     abi: liabilityLedgerAbi,
     functionName: "latestEpochId",
     chainId,
-    args: custodianId && asset ? [custodianId, asset] : undefined,
-    query: { enabled: Boolean(ledger && custodianId && asset) },
+    args: stockArgs,
+    query: { enabled: Boolean(ledger && stockArgs), refetchInterval: 60_000 },
   });
 
   const { data: epoch } = useReadContract({
@@ -209,14 +273,52 @@ export function KopiApp() {
     abi: liabilityLedgerAbi,
     functionName: "getEpoch",
     chainId,
-    args: custodianId && asset && epochId ? [custodianId, asset, epochId] : undefined,
-    query: { enabled: Boolean(ledger && custodianId && asset && epochId && Number(epochId) > 0) },
+    args: stockArgs && epochId ? [...stockArgs, epochId] : undefined,
+    query: { enabled: Boolean(ledger && stockArgs && epochId && Number(epochId) > 0) },
+  });
+
+  const { data: liveReserves, refetch: refetchReserves } = useReadContract({
+    address: sampler,
+    abi: reserveSamplerAbi,
+    functionName: "liveReserves",
+    chainId,
+    args: stockArgs,
+    query: { enabled: Boolean(sampler && stockArgs), refetchInterval: 30_000 },
+  });
+
+  const { data: stockConfig } = useReadContract({
+    address: assetConfig,
+    abi: assetConfigAbi,
+    functionName: "getConfig",
+    chainId,
+    args: stockArgs,
+    query: { enabled: Boolean(assetConfig && stockArgs) },
   });
 
   const parsed = useMemo(() => parseStatus(status), [status]);
   const parsedUsdg = useMemo(() => parseStatus(usdgStatus), [usdgStatus]);
   const epochData = useMemo(() => parseEpoch(epoch), [epoch]);
   const usdgHomeOnly = network === "arbitrumSepolia" && !net.books.liabilities.usdg;
+  const floorBps = (stockConfig as { coverageFloorBps?: number } | undefined)?.coverageFloorBps;
+  const coverageBps =
+    epochData && epochData.allocation > ZERO && typeof liveReserves === "bigint"
+      ? (liveReserves * BPS) / epochData.allocation
+      : null;
+  const covered =
+    coverageBps !== null && floorBps !== undefined ? coverageBps >= BigInt(floorBps) : undefined;
+
+  function refreshAll() {
+    void refetchStatus();
+    void refetchUsdg();
+    void refetchReserves();
+  }
+
+  function goToScene(id: number) {
+    setScene(id);
+    setActionLog(null);
+    setVerifyMsg(null);
+    scenesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   const loadEpoch = useCallback(
     async (kind: AssetKind) => {
@@ -228,7 +330,7 @@ export function KopiApp() {
         functionName: "latestEpochId",
         args: [custodianId, addr],
       })) as bigint;
-      if (latest === BigInt(0)) return { latest: 0, ep: null, addr };
+      if (latest === ZERO) return { latest: 0, ep: null, addr };
       const ep = parseEpoch(
         await publicClient.readContract({
           address: ledger,
@@ -305,7 +407,7 @@ export function KopiApp() {
         asset: balAsset,
         epochId: latest,
         found: Boolean(leaf),
-        amount: leaf?.amount ?? BigInt(0),
+        amount: leaf?.amount ?? ZERO,
         proof,
         computedRoot: tree.root,
         onchainRoot: ep.liabilityRoot,
@@ -320,21 +422,22 @@ export function KopiApp() {
   }
 
   async function runScene1() {
-    if (!dep || !registry || !publicClient) return;
-    setActionLog("Simulating duplicate addReserveWallet…");
+    if (!dep || !registry || !publicClient || !reserveWallet) return;
+    setActionLog("Reading the registry…");
     try {
-      const owner = await publicClient.readContract({
+      const owner = (await publicClient.readContract({
         address: registry,
         abi: custodianRegistryAbi,
         functionName: "walletOwner",
-        args: [BigInt(dep.chainId), dep.reserveWallet as Address],
-      });
-      if (owner && owner !== "0x0000000000000000000000000000000000000000000000000000000000000000") {
+        args: [BigInt(dep.chainId), reserveWallet],
+      })) as Hex;
+      if (owner && BigInt(owner) !== ZERO) {
         setActionLog(
-          `WalletTaken: ${short(dep.reserveWallet)} is already owned by custodian ${String(owner).slice(0, 10)}… — duplicate registration rejected.`
+          `Reserve wallet ${short(reserveWallet)} is already bound to custodian "${dep.custodianName}" (${short(owner)}).\n` +
+            `Any other custodian calling addReserveWallet with it reverts WalletTaken, so the same coins can't be counted twice.`
         );
       } else {
-        setActionLog("Reserve wallet not registered yet — run demo:deploy first.");
+        setActionLog("This reserve wallet isn't registered on this network yet.");
       }
     } catch (e) {
       setActionLog(`Error: ${(e as Error).message}`);
@@ -364,7 +467,7 @@ export function KopiApp() {
       });
       setVerifyMsg(
         ok
-          ? `Inclusion verified for ${short(parsedProof.user)} — ${fmt(BigInt(parsedProof.amount), balAsset)} at epoch ${latest}`
+          ? `Inclusion verified for ${short(parsedProof.user)}: ${amount(BigInt(parsedProof.amount), balAsset)} at epoch ${latest}`
           : "Proof does NOT match the on-chain root / total for the latest epoch."
       );
     } catch (e) {
@@ -372,63 +475,87 @@ export function KopiApp() {
     }
   }
 
-  async function tryPayout() {
-    if (!gated || !publicClient || !dep) {
-      setActionLog("GatedPayout not in deployment JSON.");
-      return;
-    }
-    const account = (address ?? dep.deployer) as Address;
-    try {
-      await publicClient.simulateContract({
-        address: gated,
-        abi: gatedPayoutAbi,
-        functionName: "payout",
-        args: [account, BigInt(1)],
-        account,
-      });
-    } catch (e) {
-      if (revertName(e) === "Insolvent") {
-        setActionLog(
-          `Payout blocked: Insolvent. The oracle reports ${reasonLabel(parsed?.reason)}, so GatedPayout fails closed.`
-        );
-        return;
+  const probeGate = useCallback(
+    async (o: WhatIfOverrides): Promise<GateResult> => {
+      if (!publicClient || !gated || !reserveWallet) return "unavailable";
+      const probe = (net.books.demoUser ?? reserveWallet) as Address;
+      try {
+        await publicClient.call({
+          account: probe,
+          to: gated,
+          data: encodeFunctionData({
+            abi: gatedPayoutAbi,
+            functionName: "payout",
+            args: [reserveWallet, ZERO],
+          }),
+          ...o,
+        });
+        return "allowed";
+      } catch (e) {
+        return revertName(e, gatedPayoutAbi) ?? "reverted";
       }
-      const credit = (await publicClient.readContract({
-        address: gated,
-        abi: gatedPayoutAbi,
-        functionName: "credit",
-        args: [account],
-      })) as bigint;
-      if (credit === BigInt(0)) {
-        setActionLog(
-          `No deposit in GatedPayout for ${short(account)}. The oracle is solvent, so the gate itself is open; deposit mTSLA first to withdraw.`
-        );
-      } else {
-        const err = e as Error & { shortMessage?: string };
-        setActionLog(`Payout reverted: ${err.shortMessage || err.message}`);
-      }
-      return;
-    }
-    if (!isConnected) {
-      const c = connectors[0];
-      if (c) connect({ connector: c });
-      setActionLog(`Gate is open and ${short(account)} has credit. Connect a wallet on ${net.label} to send it.`);
-      return;
-    }
+    },
+    [publicClient, gated, reserveWallet, net.books.demoUser]
+  );
+
+  async function runWhatIf(id: ScenarioId) {
+    if (!publicClient || !oracle || !stockArgs || !reserveWallet || !dep) return;
+    setSimBusy(id);
+    const block = await publicClient.getBlock();
+    const o = buildOverrides(id, {
+      custodianId: dep.custodianId,
+      stockToken: dep.contracts.MockStockToken,
+      reserveWallet,
+      disputes: dep.contracts.DisputeModule,
+      now: block.timestamp,
+    });
+    const details: Record<ScenarioId, string> = {
+      drain: `stateOverride on mTSLA ${short(asset)}: balanceOf(${short(reserveWallet)}) = 0 (live: ${amount(
+        typeof liveReserves === "bigint" ? liveReserves : undefined,
+        "stock"
+      )})`,
+      skip8d: `blockOverrides: timestamp = ${new Date(Number(block.timestamp + BigInt(8 * 86400)) * 1000)
+        .toISOString()
+        .slice(0, 16)
+        .replace("T", " ")} UTC (now + 8 days)`,
+      split: `stateOverride on mTSLA ${short(asset)}: uiMultiplier = 2.0 (committed epoch snapshot: 1.0)`,
+      dispute: `stateOverride on DisputeModule ${short(dep.contracts.DisputeModule)}: openDisputeCount[kopi][mTSLA] = 1`,
+    };
     try {
-      await writeContractAsync({
-        address: gated,
-        abi: gatedPayoutAbi,
-        chainId,
-        functionName: "payout",
-        args: [account, BigInt(1)],
+      const [liveRaw, simRaw, livePayout, payout] = await Promise.all([
+        publicClient.readContract({ address: oracle, abi: solvencyOracleAbi, functionName: "status", args: stockArgs }),
+        publicClient.readContract({
+          address: oracle,
+          abi: solvencyOracleAbi,
+          functionName: "status",
+          args: stockArgs,
+          ...o,
+        }),
+        probeGate({}),
+        probeGate(o),
+      ]);
+      setSim({
+        id,
+        detail: details[id],
+        liveReason: parseStatus(liveRaw)?.reason ?? null,
+        reason: parseStatus(simRaw)?.reason ?? null,
+        livePayout,
+        payout,
       });
-      setActionLog("Payout sent: the oracle reported solvent.");
     } catch (e) {
       const err = e as Error & { shortMessage?: string };
-      setActionLog(`Payout failed: ${err.shortMessage || err.message}`);
+      setSim({
+        id,
+        detail: details[id],
+        liveReason: null,
+        reason: null,
+        livePayout: "—",
+        payout: "—",
+        error: `This network's RPC rejected the simulated call: ${err.shortMessage || err.message}`,
+      });
+    } finally {
+      setSimBusy(null);
     }
-    void refetchStatus();
   }
 
   const loadExit = useCallback(async () => {
@@ -452,7 +579,7 @@ export function KopiApp() {
         claimCount: count,
         exitDefault: def,
       };
-      if (count > BigInt(0)) {
+      if (count > ZERO) {
         const c = (await read("claims", [count - BigInt(1)])) as readonly [
           Hex, Address, Address, bigint, bigint, bigint, bigint, boolean, boolean, boolean,
         ];
@@ -474,10 +601,23 @@ export function KopiApp() {
 
   useEffect(() => {
     setExitInfo(null);
-    if (scene === 8) void loadExit();
+    if (scene === SCENE_EXIT) void loadExit();
   }, [scene, loadExit]);
 
+  useEffect(() => {
+    setSim(null);
+  }, [network]);
+
   const current = SCENES.find((s) => s.id === scene)!;
+  const simScenario = sim ? SCENARIOS.find((s) => s.id === sim.id)! : null;
+  const exitHomeElsewhere = !isLocal && exitInfo !== null && !exitInfo.configured && !net.books.exitright;
+  const verifiedHref =
+    network === "robinhoodTestnet"
+      ? `${net.explorer}/address/${oracle}#code`
+      : network === "arbitrumSepolia"
+        ? `https://repo.sourcify.dev/421614/${oracle}`
+        : undefined;
+
   const txLink = (hash?: string | null) =>
     hash && net.explorer ? (
       <a href={`${net.explorer}/tx/${hash}`} target="_blank" rel="noreferrer">
@@ -497,16 +637,35 @@ export function KopiApp() {
 
   return (
     <div className="shell">
-      <header className="top">
-        <div className="brand-block">
-          <p className="eyebrow">ReserveProof · demo custodian</p>
-          <h1 className="brand">Kopi Wallet</h1>
-          <p className="tagline">
-            Fail-closed solvency for USDG &amp; stock-token custodians — live reserves, Merkle liabilities,
-            ExitRight.
+      <header className="hero">
+        <div className="hero-copy">
+          <p className="eyebrow">ReserveProof · open-source proof of reserves</p>
+          <h1 className="headline">Proof that your custodian actually holds your stocks and dollars.</h1>
+          <p className="lede">
+            When a custodian fails, customers find out last. ReserveProof puts the proof on-chain instead: the
+            custodian commits what it owes, reserves are read straight from its wallets, and anyone can check
+            their own balance. Payout and lending contracts ask one question, <code>isSolvent</code>, and stop
+            automatically the moment the answer is no.
           </p>
+          <div className="cta-row">
+            <button type="button" className="primary" onClick={() => goToScene(SCENE_VERIFY)}>
+              Verify a balance
+            </button>
+            <button type="button" className="ghost" onClick={() => goToScene(SCENE_WHATIF)}>
+              Try the what-if simulator
+            </button>
+            {DEMO_VIDEO_URL && (
+              <a className="ghost" href={DEMO_VIDEO_URL} target="_blank" rel="noreferrer">
+                Watch the demo
+              </a>
+            )}
+            <a className="ghost" href={GITHUB_URL} target="_blank" rel="noreferrer">
+              GitHub
+            </a>
+          </div>
         </div>
-        <div className="status-panel">
+
+        <aside className="status-panel" aria-label="Live status">
           <div className="netswitch" role="group" aria-label="Network">
             {NETWORK_KEYS.map((k) => (
               <button
@@ -526,63 +685,92 @@ export function KopiApp() {
             ))}
           </div>
           <div className="stat">
-            <span className="label">Network</span>
-            <span className="value">{dep ? `${net.label} · ${dep.chainId}` : "…"}</span>
-          </div>
-          <div className="stat">
-            <span className="label">Custodian</span>
-            <span className="value mono">{dep?.custodianName ?? "—"}</span>
-          </div>
-          <div className="stat">
-            <span className="label">mTSLA solvent</span>
+            <span className="label">mTSLA custody</span>
             <span className="row">
               <span className={`pill ${parsed?.ok ? "ok" : "bad"}`}>
-                {parsed ? (parsed.ok ? "true" : "false") : "—"}
+                {parsed ? (parsed.ok ? "solvent" : "insolvent") : "—"}
               </span>
               <span className="value mono">{parsed ? reasonLabel(parsed.reason) : ""}</span>
             </span>
           </div>
           <div className="stat">
-            <span className="label">USDG solvent</span>
+            <span className="label">USDG custody</span>
             {usdgHomeOnly ? (
-              <span className="value muted-text">home chain only (Robinhood)</span>
+              <span className="value muted-text">published on Robinhood</span>
             ) : (
               <span className="row">
                 <span className={`pill ${parsedUsdg?.ok ? "ok" : "bad"}`}>
-                  {parsedUsdg ? (parsedUsdg.ok ? "true" : "false") : "—"}
+                  {parsedUsdg ? (parsedUsdg.ok ? "solvent" : "insolvent") : "—"}
                 </span>
                 <span className="value mono">{parsedUsdg ? reasonLabel(parsedUsdg.reason) : ""}</span>
               </span>
             )}
           </div>
-          <div className="stat wide">
+          <div className="stat">
+            <span className="label">Demo custodian</span>
+            <span className="value">Kopi Wallet</span>
+          </div>
+          <div className="stat">
             <span className="label">Oracle</span>
             <span className="value mono">{addrLink(oracle)}</span>
           </div>
           <div className="stat wide">
             <span className="label">Reserve wallet</span>
-            <span className="value mono">{addrLink(dep?.reserveWallet)}</span>
+            <span className="value mono">{addrLink(reserveWallet)}</span>
           </div>
-          <button type="button" className="ghost" onClick={() => void refreshDep()}>
-            Reload deployment
+          <button type="button" className="icon-btn" onClick={refreshAll} aria-label="Refresh live status">
+            ↻ Refresh
           </button>
-        </div>
+        </aside>
       </header>
+
+      <section className="live-strip" aria-label="Live proof">
+        <div className="strip-cell">
+          <span className="label">Latest epoch</span>
+          <span className="big">{epochId ? String(epochId) : "—"}</span>
+          <a
+            className="sub"
+            href={`${GITHUB_URL}/actions/workflows/ops-epoch.yml`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            auto-published every 3 days ↗
+          </a>
+        </div>
+        <div className="strip-cell">
+          <span className="label">Last published</span>
+          <span className="big">{ago(parsed?.updatedAt, nowSec)}</span>
+          <span className="sub">
+            {parsed?.updatedAt && parsed.updatedAt > ZERO
+              ? new Date(Number(parsed.updatedAt) * 1000).toUTCString().slice(5, 22) + " UTC"
+              : "—"}
+          </span>
+        </div>
+        <div className="strip-cell">
+          <span className="label">mTSLA coverage</span>
+          <span className={`big ${covered === false ? "bad-text" : ""}`}>{percent(coverageBps)}</span>
+          <span className="sub">required ≥ {percent(floorBps !== undefined ? BigInt(floorBps) : undefined)}</span>
+        </div>
+        <div className="strip-cell">
+          <span className="label">Contracts verified</span>
+          <span className="big">{isLocal ? "—" : `${VERIFIED_CONTRACTS} / ${VERIFIED_CONTRACTS}`}</span>
+          {verifiedHref ? (
+            <a className="sub" href={verifiedHref} target="_blank" rel="noreferrer">
+              {network === "robinhoodTestnet" ? "Blockscout" : "Sourcify"} ↗
+            </a>
+          ) : (
+            <span className="sub">local node</span>
+          )}
+        </div>
+      </section>
 
       {loadError && (
         <div className="banner warn">
-          {loadError} Start Hardhat node, then <code>npm run demo:setup</code>.
+          {loadError} Start the Hardhat node, then <code>npm run demo:setup</code>.
         </div>
       )}
 
-      {!isLocal && scene >= 4 && scene <= 7 && (
-        <div className="banner warn">
-          Scenes 4–7 change chain state (drain, multiplier, time warp, dispute), so they are scripted
-          against <strong>Local Hardhat</strong>. On {net.label} this panel shows the live status.
-        </div>
-      )}
-
-      <nav className="stepper" aria-label="Demo scenes">
+      <nav className="stepper" aria-label="Demo scenes" ref={scenesRef}>
         {SCENES.map((s) => (
           <button
             key={s.id}
@@ -601,46 +789,47 @@ export function KopiApp() {
       </nav>
 
       <main className="scene">
-        <h2>
-          Scene {current.id}: {current.title}
-        </h2>
+        <h2>{current.title}</h2>
         <p className="blurb">{current.blurb}</p>
 
         {scene === 1 && (
           <div className="actions">
             <button type="button" className="primary" onClick={() => void runScene1()}>
-              Check exclusive wallet claim
+              Check who owns the reserve wallet
             </button>
-            <p className="hint">
-              Operator path: <code>npm run demo:prepare -- --scene 1</code> (or SCENE=1).
-            </p>
           </div>
         )}
 
         {scene === 2 && (
           <div className="actions">
-            <p className="hint">
-              After <code>cli:build</code> → <code>ops:publish</code> → <code>ops:sample</code>, this
-              panel should show <strong>isSolvent true / OK</strong> with epoch{" "}
-              {epochId ? String(epochId) : "—"}.
-            </p>
             <dl className="kv">
               <dt>Epoch</dt>
               <dd className="mono">{epochId ? String(epochId) : "—"}</dd>
-              <dt>Root</dt>
+              <dt>Liability root</dt>
               <dd className="mono">{epochData?.liabilityRoot ? short(epochData.liabilityRoot) : "—"}</dd>
-              <dt>Allocation</dt>
-              <dd className="mono">{epochData?.allocation?.toString() ?? "—"}</dd>
-              <dt>Total liability</dt>
-              <dd className="mono">{epochData?.totalLiability?.toString() ?? "—"}</dd>
+              <dt>Owed to customers</dt>
+              <dd>{amount(epochData?.totalLiability, "stock")}</dd>
+              <dt>Allocated to this chain</dt>
+              <dd>{amount(epochData?.allocation, "stock")}</dd>
+              <dt>Live reserves</dt>
+              <dd>{amount(typeof liveReserves === "bigint" ? liveReserves : undefined, "stock")}</dd>
+              <dt>Coverage</dt>
+              <dd>
+                <strong>{percent(coverageBps)}</strong> actual · required ≥{" "}
+                {percent(floorBps !== undefined ? BigInt(floorBps) : undefined)}
+              </dd>
             </dl>
-            <button type="button" className="ghost" onClick={() => void refetchStatus()}>
-              Refresh solvency
-            </button>
+            {covered !== undefined && (
+              <p className={`result ${covered ? "" : "bad"}`}>
+                {covered
+                  ? `Reserves cover the allocation above the ${percent(BigInt(floorBps!))} floor, so the oracle reports solvent.`
+                  : `Reserves are below the ${percent(BigInt(floorBps!))} floor, so the oracle fails closed.`}
+              </p>
+            )}
           </div>
         )}
 
-        {scene === 3 && (
+        {scene === SCENE_VERIFY && (
           <div className="actions">
             <div className="row">
               {(["stock", "usdg"] as AssetKind[]).map((k) => (
@@ -690,7 +879,7 @@ export function KopiApp() {
               <div className="verify-card">
                 <p className={`result ${balResult.verified ? "" : "bad"}`}>
                   {balResult.verified
-                    ? `✓ ${short(balResult.user)} holds ${fmt(balResult.amount, balResult.asset)} in epoch ${balResult.epochId}, proven against the on-chain root.`
+                    ? `✓ ${short(balResult.user)} holds ${amount(balResult.amount, balResult.asset)} in epoch ${balResult.epochId}, proven against the on-chain root.`
                     : !balResult.rootMatches
                       ? "✗ The published book does not rebuild to the on-chain root, so this UI's copy is out of date."
                       : `✗ ${short(balResult.user)} is not in the ${ASSET_META[balResult.asset].label} book for epoch ${balResult.epochId}.`}
@@ -712,7 +901,7 @@ export function KopiApp() {
                           {balResult.proof.map((p, i) => (
                             <li key={i} className="mono">
                               {p.isLeft ? "left " : "right"} sibling {short(p.hash)} · sum{" "}
-                              {fmt(BigInt(p.sum), balResult.asset)}
+                              {amount(BigInt(p.sum), balResult.asset)}
                             </li>
                           ))}
                         </ol>
@@ -744,9 +933,9 @@ export function KopiApp() {
               </div>
             )}
             <details className="advanced">
-              <summary>Advanced: paste a CLI proof JSON</summary>
+              <summary>Advanced: paste a proof JSON</summary>
               <label className="field">
-                <span>out/&lt;network&gt;/&lt;asset&gt;/proofs/&lt;address&gt;.json</span>
+                <span>Proof JSON exported above or produced by the CLI</span>
                 <textarea
                   value={proofText}
                   onChange={(e) => setProofText(e.target.value)}
@@ -763,111 +952,150 @@ export function KopiApp() {
           </div>
         )}
 
-        {scene === 4 && (
+        {scene === SCENE_WHATIF && (
           <div className="actions">
-            <p className="hint">
-              Drain reserves locally: <code>SCENE=4 npm run demo:prepare</code>, then try payout.
-            </p>
-            <button type="button" className="primary" onClick={() => void tryPayout()}>
-              Attempt GatedPayout
-            </button>
-            <p className="hint muted">
-              Expect Insolvent when reason is LIVE_SHORT / UNDERCOLLATERALIZED.
-            </p>
-          </div>
-        )}
+            <div className="sim-grid">
+              {SCENARIOS.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className={`sim-card ${sim?.id === s.id ? "active" : ""}`}
+                  disabled={simBusy !== null}
+                  onClick={() => void runWhatIf(s.id)}
+                >
+                  <span className="sim-btn">{simBusy === s.id ? "Simulating…" : s.button}</span>
+                  <span className="sim-story">{s.story}</span>
+                </button>
+              ))}
+            </div>
 
-        {scene === 5 && (
-          <div className="actions">
-            <p className="hint">
-              <code>SCENE=5 npm run demo:prepare</code> calls <code>setUIMultiplierNow</code> on the mock
-              stock token. Status should become <strong>MULTIPLIER_DRIFT</strong>.
-            </p>
-            <button type="button" className="ghost" onClick={() => void refetchStatus()}>
-              Refresh status
-            </button>
-          </div>
-        )}
-
-        {scene === 6 && (
-          <div className="actions">
-            <p className="hint">
-              The UI cannot warp chain time. Run{" "}
-              <code>npm run demo:warp</code> (or <code>SCENE=6 npm run demo:prepare</code>) against the
-              local Hardhat node, then refresh. Expect <strong>STALE</strong>.
-            </p>
-            <button type="button" className="ghost" onClick={() => void refetchStatus()}>
-              Refresh status
-            </button>
-          </div>
-        )}
-
-        {scene === 7 && (
-          <div className="actions">
-            <p className="hint">
-              <code>SCENE=7 npm run demo:prepare</code> opens a mismatch dispute with a signed statement.
-              Expect <strong>DISPUTED</strong>.
-            </p>
-            <button type="button" className="ghost" onClick={() => void refetchStatus()}>
-              Refresh status
-            </button>
-          </div>
-        )}
-
-        {scene === 8 && (
-          <div className="actions">
-            <dl className="kv">
-              <dt>Bond posted</dt>
-              <dd className="mono">{exitInfo ? fmt(exitInfo.bondBalance, "usdg") : "…"}</dd>
-              <dt>Bond in flight</dt>
-              <dd className="mono">{exitInfo ? fmt(exitInfo.bondInFlight, "usdg") : "…"}</dd>
-              <dt>Bond per claim</dt>
-              <dd className="mono">
-                {exitInfo ? (exitInfo.configured ? fmt(exitInfo.perClaim, "usdg") : "not configured") : "…"}
-              </dd>
-              <dt>Payout window</dt>
-              <dd className="mono">
-                {exitInfo?.configured ? `${Number(exitInfo.payoutDelay) / 3600} h` : "—"}
-              </dd>
-              <dt>Claims opened</dt>
-              <dd className="mono">{exitInfo ? String(exitInfo.claimCount) : "…"}</dd>
-              <dt>Exit default (mTSLA)</dt>
-              <dd className="mono">{exitInfo ? (exitInfo.exitDefault ? "YES — permanent" : "no") : "…"}</dd>
-              {exitInfo?.last && (
-                <>
-                  <dt>Last claim</dt>
-                  <dd className="mono">
-                    #{String(exitInfo.last.id)} · {short(exitInfo.last.user)} ·{" "}
-                    {fmt(exitInfo.last.amount, "stock")} ·{" "}
-                    {exitInfo.last.settled ? "settled ✓" : exitInfo.last.slashed ? "slashed ✗" : "open"}
-                  </dd>
-                </>
-              )}
-            </dl>
-            {net.books.exitright ? (
-              <dl className="kv">
-                <dt>openClaim tx</dt>
-                <dd className="mono">{txLink(net.books.exitright.txs.openClaim)}</dd>
-                <dt>settle tx</dt>
-                <dd className="mono">{txLink(net.books.exitright.txs.settle)}</dd>
-                <dt>Recorded</dt>
-                <dd className="mono">{net.books.exitright.recordedAt.slice(0, 10)}</dd>
-              </dl>
-            ) : (
-              <p className="hint">
-                {isLocal ? (
-                  <>
-                    Run <code>npx hardhat run scripts/exitright-setup.ts --network localhost</code> then{" "}
-                    <code>scripts/exitright-demo.ts</code>.
-                  </>
+            {sim && simScenario && (
+              <div className="sim-result">
+                <h3>{simScenario.title}</h3>
+                <p className="muted-text">
+                  What changed (simulated, nothing sent): <span className="mono">{sim.detail}</span>
+                </p>
+                {sim.error ? (
+                  <p className="result bad">{sim.error}</p>
                 ) : (
-                  <>The recorded claim-and-settle round-trip runs on Robinhood testnet.</>
+                  <table className="compare">
+                    <thead>
+                      <tr>
+                        <th />
+                        <th>Live chain now</th>
+                        <th>With this change</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>Oracle status</td>
+                        <td>
+                          <span className={`pill ${sim.liveReason === 0 ? "ok" : "bad"}`}>
+                            {reasonLabel(sim.liveReason ?? undefined)}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={`pill ${sim.reason === 0 ? "ok" : "bad"}`}>
+                            {reasonLabel(sim.reason ?? undefined)}
+                          </span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td>GatedPayout.payout</td>
+                        <td>
+                          <span className={`pill ${sim.livePayout === "allowed" ? "ok" : "bad"}`}>
+                            {gateLabel(sim.livePayout)}
+                          </span>
+                        </td>
+                        <td>
+                          <span className={`pill ${sim.payout === "allowed" ? "ok" : "bad"}`}>
+                            {gateLabel(sim.payout)}
+                          </span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
                 )}
+                {!sim.error && sim.reason === SCENARIO_EXPECTED_REASON[sim.id] && sim.payout !== "allowed" && (
+                  <p className="result">
+                    The real {net.label} contracts fail closed: the oracle reports{" "}
+                    <strong>{reasonLabel(sim.reason ?? undefined)}</strong> and every payout is refused until the
+                    custodian fixes it.
+                  </p>
+                )}
+                <button type="button" className="ghost" onClick={() => setSim(null)}>
+                  Reset
+                </button>
+              </div>
+            )}
+
+            {isLocal && (
+              <p className="hint">
+                On the local node you can also make these changes for real: <code>SCENE=4|5|6|7 npm run demo:prepare</code>,
+                then <code>npm run demo:reset</code>.
               </p>
             )}
-            <button type="button" className="ghost" onClick={() => void loadExit()}>
-              Refresh ExitRight
-            </button>
+          </div>
+        )}
+
+        {scene === SCENE_EXIT && (
+          <div className="actions">
+            {exitHomeElsewhere ? (
+              <>
+                <p className="result">
+                  ExitRight&apos;s bond and the recorded claim live on Robinhood testnet, the home chain for this
+                  demo. {net.label} runs the same contracts without a bond posted.
+                </p>
+                <button type="button" className="primary" onClick={() => setNetwork("robinhoodTestnet")}>
+                  Switch to Robinhood testnet
+                </button>
+              </>
+            ) : (
+              <>
+                <dl className="kv">
+                  <dt>Bond posted</dt>
+                  <dd className="mono">{exitInfo ? amount(exitInfo.bondBalance, "usdg") : "…"}</dd>
+                  <dt>Bond in flight</dt>
+                  <dd className="mono">{exitInfo ? amount(exitInfo.bondInFlight, "usdg") : "…"}</dd>
+                  <dt>Bond per claim</dt>
+                  <dd className="mono">{exitInfo?.configured ? amount(exitInfo.perClaim, "usdg") : "…"}</dd>
+                  <dt>Payout window</dt>
+                  <dd className="mono">
+                    {exitInfo?.configured ? `${Number(exitInfo.payoutDelay) / 3600} h` : "—"}
+                  </dd>
+                  <dt>Claims opened</dt>
+                  <dd className="mono">{exitInfo ? String(exitInfo.claimCount) : "…"}</dd>
+                  <dt>Exit default (mTSLA)</dt>
+                  <dd className="mono">{exitInfo ? (exitInfo.exitDefault ? "YES, permanent" : "no") : "…"}</dd>
+                  {exitInfo?.last && (
+                    <>
+                      <dt>Last claim</dt>
+                      <dd className="mono">
+                        #{String(exitInfo.last.id)} · {short(exitInfo.last.user)} ·{" "}
+                        {amount(exitInfo.last.amount, "stock")} ·{" "}
+                        {exitInfo.last.settled ? "settled ✓" : exitInfo.last.slashed ? "slashed ✗" : "open"}
+                      </dd>
+                    </>
+                  )}
+                </dl>
+                {net.books.exitright && (
+                  <dl className="kv">
+                    <dt>openClaim tx</dt>
+                    <dd className="mono">{txLink(net.books.exitright.txs.openClaim)}</dd>
+                    <dt>settle tx</dt>
+                    <dd className="mono">{txLink(net.books.exitright.txs.settle)}</dd>
+                    <dt>Recorded</dt>
+                    <dd className="mono">{net.books.exitright.recordedAt.slice(0, 10)}</dd>
+                  </dl>
+                )}
+                {isLocal && !net.books.exitright && (
+                  <p className="hint">
+                    Run <code>npx hardhat run scripts/exitright-setup.ts --network localhost</code> then{" "}
+                    <code>scripts/exitright-demo.ts</code>.
+                  </p>
+                )}
+              </>
+            )}
           </div>
         )}
 
@@ -875,8 +1103,20 @@ export function KopiApp() {
       </main>
 
       <footer className="foot">
-        <span>Contracts from deployments/{dep?.network ?? "localhost"}.json</span>
-        <span className="mono">{dep?.custodianId ? short(dep.custodianId) : ""}</span>
+        <span>
+          <a href={GITHUB_URL} target="_blank" rel="noreferrer">
+            GitHub
+          </a>{" "}
+          ·{" "}
+          <a href={`${GITHUB_URL}/blob/master/docs/SUBMISSION.md`} target="_blank" rel="noreferrer">
+            Submission
+          </a>{" "}
+          · MIT licensed
+        </span>
+        <span>
+          {net.label}
+          {oracle && net.explorer ? <> · oracle {addrLink(oracle)}</> : null}
+        </span>
       </footer>
     </div>
   );
