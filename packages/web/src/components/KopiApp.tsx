@@ -9,7 +9,6 @@ import {
   decodeErrorResult,
   encodeFunctionData,
   formatUnits,
-  getAddress,
   isAddress,
   type Abi,
   type Address,
@@ -26,7 +25,8 @@ import {
   guardedVaultAbi,
   gatedMorphoOracleAbi,
 } from "../lib/abis";
-import { buildSortedTree, verifyInclusion, type ProofNode } from "../lib/merkle";
+import { verifyInclusion, type ProofNode } from "../lib/merkle";
+import { checkBalance, parseEpoch, type BalanceResult } from "../lib/balance";
 import { reasonLabel } from "../lib/reasons";
 import { SCENES, SCENE_EXIT, SCENE_VERIFY, SCENE_WHATIF, type Deployment } from "../lib/types";
 import {
@@ -53,26 +53,6 @@ import { CompareSection } from "./CompareSection";
 type ChainId = 46630 | 421614 | 31337;
 
 type Status = { ok: boolean; epochId: bigint; updatedAt: bigint; reason: number };
-type EpochView = {
-  liabilityRoot: Hex;
-  totalLiability: bigint;
-  allocation: bigint;
-  exists: boolean;
-  leafCount: number;
-};
-
-type BalanceResult = {
-  user: Address;
-  asset: AssetKind;
-  epochId: number;
-  found: boolean;
-  amount: bigint;
-  proof: ProofNode[];
-  computedRoot: Hex;
-  onchainRoot: Hex;
-  rootMatches: boolean;
-  verified: boolean;
-};
 
 type ExitInfo = {
   bondBalance: bigint;
@@ -152,21 +132,6 @@ function parseStatus(raw: unknown): Status | null {
   }
   const s = raw as Status;
   return { ok: s.ok, epochId: s.epochId, updatedAt: s.updatedAt, reason: Number(s.reason) };
-}
-
-function parseEpoch(raw: unknown): EpochView | null {
-  if (!raw) return null;
-  if (Array.isArray(raw)) {
-    return {
-      liabilityRoot: raw[0] as Hex,
-      totalLiability: raw[1] as bigint,
-      allocation: raw[2] as bigint,
-      exists: raw[6] as boolean,
-      leafCount: Number(raw[7]),
-    };
-  }
-  const e = raw as Omit<EpochView, "leafCount"> & { leafCount: number | bigint };
-  return { ...e, leafCount: Number(e.leafCount) };
 }
 
 function revertName(e: unknown, abi?: Abi): string | undefined {
@@ -504,42 +469,17 @@ export function KopiApp() {
         setBalError(`No ${label} epoch committed on ${net.label} yet.`);
         return;
       }
-      const tree = buildSortedTree(
-        dep.custodianId,
-        addr,
-        latest,
-        book.map((l) => ({ user: l.user as Address, amount: BigInt(l.amount) }))
+      setBalResult(
+        checkBalance({
+          custodianId: dep.custodianId,
+          kind: balAsset,
+          asset: addr,
+          epochId: latest,
+          ep,
+          book,
+          user: balAddr,
+        })
       );
-      const user = getAddress(balAddr.trim());
-      const proof = tree.proofs.get(user.toLowerCase()) ?? [];
-      const leaf = tree.sorted.find((l) => l.user.toLowerCase() === user.toLowerCase());
-      const rootMatches =
-        tree.root.toLowerCase() === ep.liabilityRoot.toLowerCase() && tree.total === ep.totalLiability;
-      const verified = leaf
-        ? verifyInclusion({
-            custodianId: dep.custodianId,
-            asset: addr,
-            epochId: latest,
-            leafCount: ep.leafCount,
-            user,
-            amount: leaf.amount,
-            root: ep.liabilityRoot,
-            totalSum: ep.totalLiability,
-            siblings: proof,
-          })
-        : false;
-      setBalResult({
-        user,
-        asset: balAsset,
-        epochId: latest,
-        found: Boolean(leaf),
-        amount: leaf?.amount ?? ZERO,
-        proof,
-        computedRoot: tree.root,
-        onchainRoot: ep.liabilityRoot,
-        rootMatches,
-        verified,
-      });
     } catch (e) {
       setBalError((e as Error).message);
     } finally {
@@ -857,6 +797,9 @@ export function KopiApp() {
             <button type="button" className="ghost" onClick={() => goToScene(SCENE_WHATIF)}>
               Try the what-if simulator
             </button>
+            <Link className="ghost" href="/verify">
+              Verify every claim
+            </Link>
             <Link className="ghost" href="/risk">
               Curator risk
             </Link>
@@ -1381,7 +1324,7 @@ export function KopiApp() {
             Submission
           </a>{" "}
           · <Link href="/risk">Curator risk</Link> · <Link href="/radar">Mainnet radar</Link> ·{" "}
-          <Link href="/compare">How we differ</Link> · <Link href="/status">Status</Link> ·{" "}
+          <Link href="/compare">How we differ</Link> · <Link href="/verify">Verify</Link> · <Link href="/status">Status</Link> ·{" "}
           <a href={`${GITHUB_URL}/blob/master/docs/FOUNDER-HOUSE.md`} target="_blank" rel="noreferrer">
             Pilot / GTM
           </a>{" "}

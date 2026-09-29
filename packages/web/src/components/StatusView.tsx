@@ -134,6 +134,9 @@ export function StatusView() {
           <Link className="ghost" href="/">
             ← Live demo
           </Link>
+          <Link className="ghost" href="/verify">
+            Verify every claim
+          </Link>
           <Link className="ghost" href="/risk">
             Curator risk
           </Link>
@@ -296,7 +299,7 @@ export function StatusView() {
       <footer className="foot">
         <span>
           <Link href="/">Live demo</Link> · <Link href="/risk">Curator risk</Link> · <Link href="/radar">Mainnet radar</Link>{" "}
-          ·{" "}
+          · <Link href="/verify">Verify</Link> ·{" "}
           <a href={GITHUB_URL} target="_blank" rel="noreferrer">
             GitHub
           </a>{" "}

@@ -19,9 +19,12 @@
  *
  *   npm run demo:morpho-fork
  *   FORK_RPC=<url> FORK_BLOCK=<n> npm run demo:morpho-fork   # optional overrides
+ *   FORK_JSON=<path> npm run demo:morpho-fork                # also write every check as JSON
  *
  * Exits 1 if any step fails.
  */
+import * as fs from "fs";
+import * as path from "path";
 import { ethers, network } from "hardhat";
 import type { Contract, Log } from "ethers";
 import { time } from "@nomicfoundation/hardhat-network-helpers";
@@ -29,6 +32,7 @@ import { deployFixture, commitAndSample, twoLeaves } from "../test/helpers/fixtu
 
 const FORK_RPC = process.env.FORK_RPC || process.env.ROBINHOOD_MAINNET_RPC || "https://rpc.mainnet.chain.robinhood.com";
 const FORK_BLOCK = process.env.FORK_BLOCK ? Number(process.env.FORK_BLOCK) : undefined;
+const FORK_JSON = process.env.FORK_JSON;
 
 const MORPHO = "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010";
 const TSLA = "0x322F0929c4625eD5bAd873c95208D54E1c003b2d";
@@ -337,6 +341,22 @@ async function main() {
     console.log(`  ${rs.every((r) => r.ok) ? "PASS" : "FAIL"}  ${s.padEnd(14)} ${rs.filter((r) => r.ok).length}/${rs.length} checks`);
   }
   console.log(`\n${failed.length === 0 ? "ALL PASS" : `${failed.length} FAILED`}: ${results.length} checks on a Robinhood Chain mainnet fork against the real Morpho Blue`);
+  if (FORK_JSON) {
+    const out = {
+      ranAt: new Date().toISOString(),
+      forkBlock: forkBlock!.number - 1,
+      rpcHost: new URL(FORK_RPC).host,
+      morpho: MORPHO,
+      token: TSLA,
+      baseOracle: TSLA_USDG_ORACLE,
+      passed: results.length - failed.length,
+      total: results.length,
+      checks: results,
+    };
+    fs.mkdirSync(path.dirname(path.resolve(FORK_JSON)), { recursive: true });
+    fs.writeFileSync(FORK_JSON, JSON.stringify(out, null, 2) + "\n");
+    console.log(`wrote ${FORK_JSON}`);
+  }
   if (failed.length) process.exit(1);
 }
 

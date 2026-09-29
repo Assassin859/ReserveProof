@@ -20,6 +20,20 @@ export type RunInfo = {
   conclusion: string | null;
   createdAt: number;
   url: string;
+  /** Workflow file, e.g. ".github/workflows/ci.yml". */
+  path: string;
+  branch: string | null;
+};
+
+type ApiRun = {
+  id: number;
+  event: string;
+  status: string;
+  conclusion: string | null;
+  created_at: string;
+  html_url: string;
+  path?: string;
+  head_branch?: string | null;
 };
 
 export type HourCell = {
@@ -59,12 +73,12 @@ const HOURS = 48;
 const RANK: Record<Level, number> = { ok: 0, warn: 1, down: 2 };
 const worst = (a: Level, b: Level): Level => (RANK[b] > RANK[a] ? b : a);
 
-function errMsg(e: unknown) {
+export function errMsg(e: unknown) {
   const m = e instanceof BaseError ? e.shortMessage : (e as Error)?.message ?? String(e);
   return m.split("\n")[0].slice(0, 160);
 }
 
-function dur(sec: number) {
+export function dur(sec: number) {
   const s = Math.max(0, Math.round(sec));
   const d = Math.floor(s / 86400);
   const h = Math.floor((s % 86400) / 3600);
@@ -74,13 +88,13 @@ function dur(sec: number) {
   return `${m}m`;
 }
 
-function utc(sec: number) {
+export function utc(sec: number) {
   return new Date(sec * 1000).toUTCString().slice(5, 22) + " UTC";
 }
 
-async function workflowRuns(file: string, perPage: number): Promise<RunInfo[]> {
+async function fetchRuns(url: string, label: string): Promise<RunInfo[]> {
   const token = process.env.GITHUB_TOKEN;
-  const res = await fetch(`${REPO_API}/actions/workflows/${file}/runs?per_page=${perPage}`, {
+  const res = await fetch(url, {
     headers: {
       accept: "application/vnd.github+json",
       "user-agent": "reserveproof-status",
@@ -90,11 +104,9 @@ async function workflowRuns(file: string, perPage: number): Promise<RunInfo[]> {
   });
   if (!res.ok) {
     const left = res.headers.get("x-ratelimit-remaining");
-    throw new Error(`GitHub ${file}: HTTP ${res.status}${left === "0" ? " (rate limited)" : ""}`);
+    throw new Error(`GitHub ${label}: HTTP ${res.status}${left === "0" ? " (rate limited)" : ""}`);
   }
-  const body = (await res.json()) as {
-    workflow_runs?: { id: number; event: string; status: string; conclusion: string | null; created_at: string; html_url: string }[];
-  };
+  const body = (await res.json()) as { workflow_runs?: ApiRun[] };
   return (body.workflow_runs ?? []).map((r) => ({
     id: r.id,
     event: r.event,
@@ -102,7 +114,18 @@ async function workflowRuns(file: string, perPage: number): Promise<RunInfo[]> {
     conclusion: r.conclusion,
     createdAt: Math.floor(Date.parse(r.created_at) / 1000),
     url: r.html_url,
+    path: r.path ?? "",
+    branch: r.head_branch ?? null,
   }));
+}
+
+export function workflowRuns(file: string, perPage: number): Promise<RunInfo[]> {
+  return fetchRuns(`${REPO_API}/actions/workflows/${file}/runs?per_page=${perPage}`, file);
+}
+
+/** The latest runs of every workflow in one request (the unauthenticated limit is 60 an hour). */
+export function repoRuns(perPage = 100): Promise<RunInfo[]> {
+  return fetchRuns(`${REPO_API}/actions/runs?per_page=${perPage}`, "runs");
 }
 
 function runState(r: RunInfo): HourCell["state"] {
@@ -110,7 +133,7 @@ function runState(r: RunInfo): HourCell["state"] {
   return r.conclusion === "success" ? "success" : "failure";
 }
 
-function hourCells(runs: RunInfo[], nowSec: number): HourCell[] {
+export function hourCells(runs: RunInfo[], nowSec: number): HourCell[] {
   const thisHour = Math.floor(nowSec / 3600) * 3600;
   const cells: HourCell[] = [];
   for (let i = HOURS - 1; i >= 0; i--) {

@@ -1,0 +1,49 @@
+name: Fork drill
+
+# Daily: fork Robinhood Chain mainnet in memory, gate the real TSLA token, wrap the real TSLA/USDG
+# oracle and open a market on the real Morpho Blue, then drain the custodian and check every step
+# (npm run demo:morpho-fork). No keys, nothing broadcast. /verify shows the latest runs.
+on:
+  schedule:
+    - cron: "41 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drill:
+    name: Morpho freeze on a mainnet fork
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      ROBINHOOD_MAINNET_RPC: ${{ secrets.ROBINHOOD_MAINNET_RPC }}
+      FORK_JSON: fork-drill.json
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Drill
+        run: |
+          set -o pipefail
+          npm run demo:morpho-fork 2>&1 | tee drill.log
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '### Morpho fork drill'
+            echo '```'
+            grep -E 'Forking|forked|PASS|FAIL|ALL PASS|FAILED' drill.log || echo 'no output'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fork-drill
+          path: |
+            fork-drill.json
+            drill.log
+          if-no-files-found: warn

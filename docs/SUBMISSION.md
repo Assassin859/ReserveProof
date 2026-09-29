@@ -4,7 +4,7 @@
 
 **150 tests** (51 Hardhat + 61 Foundry fuzz + 24 Foundry unit + 14 stateful invariants) · **every contract verified on both testnets** (13 on Robinhood, 14 on Arbitrum) · **SolvencyGatedMorphoOracle tested against the real Morpho Blue v1.0.0 core**
 
-See [VERIFY.md](./VERIFY.md) for how to check every claim below yourself.
+**Check every claim below in one click: [reserveproof-teal.vercel.app/verify](https://reserveproof-teal.vercel.app/verify)** (live against the chains, explorers and CI; reproduce locally with [VERIFY.md](./VERIFY.md)).
 
 ## The problem, in numbers
 
@@ -90,7 +90,10 @@ market on the real Morpho Blue. Then it drains the reserves and prints 20 PASS/F
 - after the reserves are restored, one poke brings back full price and borrowing.
 
 It takes about 45 seconds. Details, and what is simulated (balances, and the feed transmitters during the 72h warp), are in the
-[README](../README.md#re-run-the-morpho-freeze-yourself).
+[README](../README.md#re-run-the-morpho-freeze-yourself). This is fork-only today: no ReserveProof contract is
+on mainnet yet. The same drill runs daily against the latest mainnet block in the
+[fork drill workflow](https://github.com/Assassin859/ReserveProof/actions/workflows/fork-drill.yml), and
+[/verify](https://reserveproof-teal.vercel.app/verify#morpho-fork) shows its latest result.
 
 **Price guards vs ReserveProof: they block bad prices; we block unproven reserves and unpaid exits.**
 Price guards such as [StockGuard](https://arbitrum-singapore.hackquest.io/projects/StockGuard) stop a Morpho
@@ -248,6 +251,8 @@ The registry, ledger, sampler, ExitRight and mTSLA share addresses on both chain
 | ExitRight record | [`deployments/robinhoodTestnet.exitright.json`](../deployments/robinhoodTestnet.exitright.json) |
 | Scheduled re-publishing | [Ops epoch workflow](https://github.com/Assassin859/ReserveProof/actions/workflows/ops-epoch.yml) (every 3 days); [first run](https://github.com/Assassin859/ReserveProof/actions/runs/36323953179) published epoch 2 on both chains. The hourly [watchtower](https://github.com/Assassin859/ReserveProof/actions/workflows/watchtower.yml) re-publishes if a scheduled run is missed, pokes the Morpho wrapper, and fails loudly on anything it can't heal. Public status page: [/status](https://reserveproof-teal.vercel.app/status) |
 | Live app | [reserveproof-teal.vercel.app](https://reserveproof-teal.vercel.app) |
+| Verify every claim | [/verify](https://reserveproof-teal.vercel.app/verify): tests, verified contracts, solvent proofs, same root on both chains, an in-browser balance proof, ExitRight settlement, scheduled publishing, live mainnet numbers and the daily Morpho fork drill |
+| Daily Morpho fork drill | [Fork drill workflow](https://github.com/Assassin859/ReserveProof/actions/workflows/fork-drill.yml): `npm run demo:morpho-fork` against the latest Robinhood Chain mainnet block, every day |
 | Demo video | _TODO_ |
 | Repo | https://github.com/Assassin859/ReserveProof |
 

@@ -1,0 +1,132 @@
+{
+  "ranAt": "2026-09-29T16:08:50.955Z",
+  "forkBlock": 75787407,
+  "rpcHost": "rpc.mainnet.chain.robinhood.com",
+  "morpho": "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010",
+  "token": "0x322F0929c4625eD5bAd873c95208D54E1c003b2d",
+  "baseOracle": "0x280855A5BF983bf005f19992C157007930B3de2A",
+  "passed": 20,
+  "total": 20,
+  "checks": [
+    {
+      "step": "1 healthy",
+      "check": "SolvencyOracle.status(TSLA) is OK",
+      "ok": true,
+      "detail": "OK"
+    },
+    {
+      "step": "1 healthy",
+      "check": "wrapper price == real oracle price",
+      "ok": true,
+      "detail": "354.284999 USDG/TSLA"
+    },
+    {
+      "step": "1 healthy",
+      "check": "borrow 2,500 USDG (~70% LTV) succeeds",
+      "ok": true,
+      "detail": "borrower holds 3500.0 USDG"
+    },
+    {
+      "step": "2 drained",
+      "check": "status reason is LIVE_SHORT (6)",
+      "ok": true,
+      "detail": "LIVE_SHORT"
+    },
+    {
+      "step": "2 drained",
+      "check": "wrapper.price() reverts",
+      "ok": true,
+      "detail": "Insolvent(6)"
+    },
+    {
+      "step": "2 drained",
+      "check": "Morpho borrow(1 USDG) reverts",
+      "ok": true,
+      "detail": "Insolvent(6)"
+    },
+    {
+      "step": "2 drained",
+      "check": "Morpho indebted withdrawCollateral reverts",
+      "ok": true,
+      "detail": "Insolvent(6)"
+    },
+    {
+      "step": "2 drained",
+      "check": "Morpho liquidate reverts (no liquidation at a fake price)",
+      "ok": true,
+      "detail": "Insolvent(6)"
+    },
+    {
+      "step": "3 exits",
+      "check": "borrower repay(100 USDG)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "3 exits",
+      "check": "borrower supplyCollateral(1 TSLA)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "3 exits",
+      "check": "lender withdraw(10,000 USDG)",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "4 keeper",
+      "check": "real oracle price unchanged by the replay",
+      "ok": true,
+      "detail": "354.284999 USDG/TSLA"
+    },
+    {
+      "step": "4 keeper",
+      "check": "first failing poke starts the incident clock",
+      "ok": true,
+      "detail": "cap at 2026-10-02T16:08:53.000Z"
+    },
+    {
+      "step": "4 keeper",
+      "check": "price() still reverts at 71h (16 pokes)",
+      "ok": true,
+      "detail": "Insolvent(6)"
+    },
+    {
+      "step": "4 keeper",
+      "check": "price() at 72h == 50% of the real oracle price",
+      "ok": true,
+      "detail": "177.142499 USDG/TSLA"
+    },
+    {
+      "step": "5 liquidation",
+      "check": "liquidator seizes 1 TSLA",
+      "ok": true,
+      "detail": "received 1.0 TSLA for 164.919669 USDG"
+    },
+    {
+      "step": "6 restore",
+      "check": "status is OK again",
+      "ok": true,
+      "detail": "OK"
+    },
+    {
+      "step": "6 restore",
+      "check": "healthy poke emits FreezeCleared",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "step": "6 restore",
+      "check": "price() back to the full real oracle price",
+      "ok": true,
+      "detail": "354.284999 USDG/TSLA"
+    },
+    {
+      "step": "6 restore",
+      "check": "borrow(1 USDG) works again",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}

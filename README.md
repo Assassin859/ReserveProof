@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/Assassin859/ReserveProof/actions/workflows/ci.yml/badge.svg)](https://github.com/Assassin859/ReserveProof/actions/workflows/ci.yml)
 [![Ops epoch](https://github.com/Assassin859/ReserveProof/actions/workflows/ops-epoch.yml/badge.svg)](https://github.com/Assassin859/ReserveProof/actions/workflows/ops-epoch.yml)
+[![Fork drill](https://github.com/Assassin859/ReserveProof/actions/workflows/fork-drill.yml/badge.svg)](https://github.com/Assassin859/ReserveProof/actions/workflows/fork-drill.yml)
 
 `USDG` · `Robinhood Chain` · `Robinhood Stock Tokens (ERC-8056)` · `Morpho Blue` · `Arbitrum`
 
@@ -10,6 +11,7 @@ shipped as one modifier any lending market can add: `onlySolvent(asset)`.
 
 **Live demo:** [reserveproof-teal.vercel.app](https://reserveproof-teal.vercel.app) (Kopi Wallet on Robinhood testnet and Arbitrum Sepolia)
 · **150 tests** (`npm run test:count`) · every contract verified on both testnets
+· **Check every claim in one click:** [reserveproof-teal.vercel.app/verify](https://reserveproof-teal.vercel.app/verify)
 
 ## Why
 
@@ -50,7 +52,7 @@ live mainnet market, marked would gate / wouldn't / copycat:
 
 See [docs/technical-spec.md](docs/technical-spec.md) for the full design.
 
-Hackathon packet: [docs/SUBMISSION.md](docs/SUBMISSION.md) · [docs/VERIFY.md](docs/VERIFY.md) · [docs/FOUNDER-HOUSE.md](docs/FOUNDER-HOUSE.md) (go-to-market)
+Hackathon packet: [docs/SUBMISSION.md](docs/SUBMISSION.md) · [/verify](https://reserveproof-teal.vercel.app/verify) and [docs/VERIFY.md](docs/VERIFY.md) · [docs/FOUNDER-HOUSE.md](docs/FOUNDER-HOUSE.md) (go-to-market)
 
 ## How it works
 
@@ -171,6 +173,11 @@ reserve wallet and prints PASS/FAIL for every check. Only two things are simulat
 which are set in storage, and, from step 4 on, the feed transmitters. The real oracle rejects feed answers
 older than 26 hours and a fork receives no new rounds, so before warping 72 hours the feed's latest real
 answer is replayed with fresh timestamps. The script exits non-zero if any check fails.
+
+This is fork-only today: nothing of ours is deployed on mainnet yet. The
+[Fork drill](.github/workflows/fork-drill.yml) workflow runs the same command every day against the latest
+mainnet block (`FORK_JSON=<path>` saves every check), and
+[/verify](https://reserveproof-teal.vercel.app/verify#morpho-fork) shows the latest result.
 
 ```text
 Step 2: custodian drains 990 of 1000 TSLA from the reserve wallet

@@ -471,7 +471,7 @@ export function RiskView() {
 
       <footer className="foot">
         <span>
-          <Link href="/">Live demo</Link> · <Link href="/radar">Mainnet radar</Link> · <Link href="/status">Status</Link> ·{" "}
+          <Link href="/">Live demo</Link> · <Link href="/radar">Mainnet radar</Link> · <Link href="/verify">Verify</Link> · <Link href="/status">Status</Link> ·{" "}
           <a href={GITHUB_URL} target="_blank" rel="noreferrer">
             GitHub
           </a>{" "}
