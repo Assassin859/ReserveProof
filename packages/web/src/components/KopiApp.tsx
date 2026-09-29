@@ -214,7 +214,12 @@ function ago(fromSec: bigint | undefined, nowSec: number) {
 }
 
 /** One sentence describing only the gates the simulator actually probed on this network. */
-function simSummary(gates: GateRow[], reason: string, network: string, maxFreezeHours?: number) {
+function simSummary(
+  gates: GateRow[],
+  reason: string,
+  network: string,
+  freeze?: { maxFreezeHours: number; postCapPct: number }
+) {
   const find = (k: GateKind) => gates.find((g) => g.kind === k);
   const parts: string[] = [];
   const payout = find("payout");
@@ -224,15 +229,11 @@ function simSummary(gates: GateRow[], reason: string, network: string, maxFreeze
   const withdraw = find("withdraw");
   if (withdraw && withdraw.sim !== "allowed") parts.push("an indebted borrower can't pull collateral out");
   const morpho = find("morpho");
-  if (morpho && morpho.sim !== "allowed") {
-    parts.push(
-      `the Morpho oracle stops pricing mTSLA${maxFreezeHours ? ` (for at most ${maxFreezeHours} h once anyone pokes it)` : ""}`
-    );
-  }
+  if (morpho && morpho.sim !== "allowed") parts.push("the Morpho oracle stops pricing mTSLA");
   let text = `The real ${network} contracts react: the oracle reports ${reason}`;
   text += parts.length ? `, ${parts.join(", ")}.` : ".";
-  if (morpho && morpho.sim === "allowed") {
-    text += ` The Morpho oracle keeps pricing on purpose: ${reason} is not evidence of a shortfall, and freezing it would also freeze liquidations.`;
+  if (morpho && morpho.sim !== "allowed" && freeze) {
+    text += ` If the failure lasts ${freeze.maxFreezeHours} h, the Morpho oracle reprices at ${freeze.postCapPct}% so liquidations can clear.`;
   }
   if (withdraw && withdraw.sim === "allowed") text += " Withdrawing collateral with no debt stays open.";
   if (borrow || withdraw) text += " Repaying is never blocked.";
@@ -598,7 +599,7 @@ export function KopiApp() {
     }
   }
 
-  const gateProbes = useCallback(async (id: ScenarioId): Promise<GateProbe[]> => {
+  const gateProbes = useCallback(async (): Promise<GateProbe[]> => {
     const probes: GateProbe[] = [];
     if (!publicClient || !reserveWallet) return probes;
     if (gated) {
@@ -648,14 +649,6 @@ export function KopiApp() {
     }
     const morphoOracle = dep?.contracts.SolvencyGatedMorphoOracle;
     if (morphoOracle) {
-      const blocked = (await publicClient
-        .readContract({
-          address: morphoOracle,
-          abi: gatedMorphoOracleAbi,
-          functionName: "blocks",
-          args: [SCENARIO_EXPECTED_REASON[id]],
-        })
-        .catch(() => true)) as boolean;
       probes.push({
         kind: "morpho",
         label: "Morpho Blue oracle: SolvencyGatedMorphoOracle.price()",
@@ -663,8 +656,6 @@ export function KopiApp() {
         account: reserveWallet,
         abi: gatedMorphoOracleAbi,
         data: encodeFunctionData({ abi: gatedMorphoOracleAbi, functionName: "price" }),
-        staysOpen: !blocked,
-        openNote: blocked ? undefined : "by design: liquidations keep working",
         // Morpho scale: loan units per collateral unit * 1e36; USDG 6 dp, mTSLA 18 dp, so USDG per mTSLA = p / 1e24.
         format: (ret) => {
           const n = Number(formatUnits(BigInt(ret), 24));
@@ -712,7 +703,7 @@ export function KopiApp() {
       dispute: `stateOverride on DisputeModule ${short(dep.contracts.DisputeModule)}: openDisputeCount[kopi][mTSLA] = 1`,
     };
     try {
-      const probes = await gateProbes(id);
+      const probes = await gateProbes();
       const [liveRaw, simRaw, gates] = await Promise.all([
         publicClient.readContract({ address: oracle, abi: solvencyOracleAbi, functionName: "status", args: stockArgs }),
         publicClient.readContract({
@@ -819,7 +810,10 @@ export function KopiApp() {
       : network === "arbitrumSepolia"
         ? `https://repo.sourcify.dev/421614/${oracle}`
         : undefined;
-  const maxFreezeHours = dep?.morpho?.maxFreeze ? Math.round(dep.morpho.maxFreeze / 3600) : undefined;
+  const morphoFreeze =
+    dep?.morpho?.maxFreeze && dep.morpho.postCapBps
+      ? { maxFreezeHours: Math.round(dep.morpho.maxFreeze / 3600), postCapPct: dep.morpho.postCapBps / 100 }
+      : undefined;
   const verifiedText = isLocal || !verification ? "—" : `${verification.verified} / ${verification.total}`;
   const verifiedShort = verification !== null && verification.unverified.length > 0;
   const verifiedUnchecked = verification !== null && verification.unknown > 0;
@@ -1286,7 +1280,7 @@ export function KopiApp() {
                   sim.reason === SCENARIO_EXPECTED_REASON[sim.id] &&
                   sim.gates.length > 0 &&
                   sim.gates.every((g) => (g.staysOpen ? g.sim === "allowed" : g.sim !== "allowed")) && (
-                    <p className="result">{simSummary(sim.gates, reasonLabel(sim.reason ?? undefined), net.label, maxFreezeHours)}</p>
+                    <p className="result">{simSummary(sim.gates, reasonLabel(sim.reason ?? undefined), net.label, morphoFreeze)}</p>
                   )}
                 <button type="button" className="ghost" onClick={() => setSim(null)}>
                   Reset

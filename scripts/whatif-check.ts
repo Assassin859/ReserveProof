@@ -102,7 +102,7 @@ async function main() {
     }
   };
 
-  // The gated Morpho oracle blocks only on shortfall reasons; others must keep returning the base price.
+  // The gated Morpho oracle must stop pricing on every failure reason (no freeze clock runs in a simulation).
   const morpho = c.SolvencyGatedMorphoOracle
     ? await ethers.getContractAt("SolvencyGatedMorphoOracle", c.SolvencyGatedMorphoOracle)
     : undefined;
@@ -148,10 +148,9 @@ async function main() {
       vaultRes = results.map((r, i) => `${vaultProbes[i][0]}=${r}`);
       vaultOk = results.every((r, i) => (vaultProbes[i][2] ? r === "allowed" : r === `Insolvent(${want})`));
       if (morpho) {
-        const blocked = await morpho.blocks(want);
         morphoRes = await morphoResult(o);
-        morphoOk = blocked ? morphoRes === `Insolvent(${want})` : morphoRes.startsWith("price=");
-        morphoRes = ` morpho.${morphoRes}${blocked ? "" : " (non-blocking reason)"}`;
+        morphoOk = morphoRes === `Insolvent(${want})`;
+        morphoRes = ` morpho.${morphoRes}`;
       }
     } catch (e) {
       reason = `ERR ${(e as Error).message.slice(0, 100)}`;

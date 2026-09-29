@@ -153,7 +153,9 @@ contract DisputeInvariantsTest is Test {
         d = h.disputes();
         asset = h.assetAddr();
         targetContract(address(h));
-        bytes4[] memory actions = new bytes4[](8);
+        // `challenge` is listed three times to weight it: with 8 equal selectors a 64-call run has no
+        // successful challenge often enough (~2% of full sessions) to trip afterInvariant's guard.
+        bytes4[] memory actions = new bytes4[](10);
         actions[0] = DisputeHandler.challenge.selector;
         actions[1] = DisputeHandler.answer.selector;
         actions[2] = DisputeHandler.expire.selector;
@@ -162,6 +164,8 @@ contract DisputeInvariantsTest is Test {
         actions[5] = DisputeHandler.withdrawBond.selector;
         actions[6] = DisputeHandler.commitNext.selector;
         actions[7] = DisputeHandler.warp.selector;
+        actions[8] = DisputeHandler.challenge.selector;
+        actions[9] = DisputeHandler.challenge.selector;
         targetSelector(FuzzSelector({addr: address(h), selectors: actions}));
     }
 
@@ -210,15 +214,12 @@ contract DisputeInvariantsTest is Test {
         }
         assertEq(DisputeHandlerToken(h.bondTokenAddr()).balanceOf(address(d)), owed, "bond accounting mismatch");
     }
-
-    function afterInvariant() external view {
-        // Guard against a vacuous run where the handler never reached the interesting paths.
-        assertGt(h.calls("challenge"), 0, "no challenge was ever opened");
-    }
 }
 
 /// @notice Deterministic walk through every handler path, so the invariant suite is known to reach
-///         answer, expire, matching-epoch clear and bond withdrawal rather than passing vacuously.
+///         challenge, answer, expire, matching-epoch clear and bond withdrawal rather than passing
+///         vacuously. A per-run `afterInvariant` guard can't do this reliably: with 8 actions at
+///         depth 64, about 1 run in 5,000 never picks `challenge`.
 contract DisputeHandlerSmokeTest is Test {
     bytes32 internal constant CID = keccak256("kopi");
     DisputeHandler internal h;

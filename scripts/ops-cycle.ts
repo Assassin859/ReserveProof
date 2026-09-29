@@ -53,20 +53,22 @@ async function main() {
   await pokeMorphoOracle();
   if (failed.length) throw new Error(`cycle failed for: ${failed.join(", ")}`);
 
-  // Keep the gated Morpho oracle's freeze clock in sync: start it during a blocking failure, clear it
-  // after recovery, so a leftover clock can't shorten the next freeze.
+  // Keep the gated Morpho oracle's incident clock in sync: every poke during a failure starts or
+  // extends it, and a poke after recovery clears it.
   async function pokeMorphoOracle() {
     if (!dep.contracts.SolvencyGatedMorphoOracle) return;
     const gated = await ethers.getContractAt("SolvencyGatedMorphoOracle", dep.contracts.SolvencyGatedMorphoOracle);
     const s = await oracle.status(dep.custodianId, await gated.asset());
-    const blocking = !s.ok && (await gated.blocks(s.reason));
     const started = await gated.freezeStartedAt();
-    if (blocking === (started !== 0n)) {
-      console.log(`${net} morpho oracle: freeze clock ${started ? `running since ${started}` : "idle"}, no poke needed`);
+    if (s.ok && started === 0n) {
+      console.log(`${net} morpho oracle: healthy, no clock, no poke needed`);
       return;
     }
     await (await gated.poke()).wait();
-    console.log(`${net} morpho oracle: poked (${blocking ? "freeze clock started" : "freeze clock cleared"})`);
+    const [running, startedAt, capEndsAt] = await gated.freezeState();
+    console.log(
+      `${net} morpho oracle: poked (${running ? `incident since ${startedAt}, discount from ${capEndsAt}` : "clock cleared"})`
+    );
   }
 
   async function cycleAsset(kind: AssetKind) {

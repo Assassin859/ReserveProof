@@ -36,8 +36,9 @@ export type Deployment = {
     basePrice?: string;
     baseOracle: `0x${string}`;
     asset: `0x${string}`;
-    blockingReasons?: number;
     maxFreeze?: number;
+    maxPokeGap?: number;
+    postCapBps?: number;
   };
   demoUser?: `0x${string}`;
 };

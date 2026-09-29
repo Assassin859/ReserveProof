@@ -55,8 +55,9 @@ async function main() {
         c.SolvencyOracle,
         dep.custodianId,
         dep.morpho.asset,
-        dep.morpho.blockingReasons,
         dep.morpho.maxFreeze,
+        dep.morpho.maxPokeGap,
+        dep.morpho.postCapBps,
       ],
     ]);
   }

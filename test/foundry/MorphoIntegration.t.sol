@@ -13,10 +13,10 @@ import {ISolvencyOracle} from "../../src/interfaces/ISolvencyOracle.sol";
 import {RPTypes} from "../../src/libraries/RPTypes.sol";
 
 /// @notice The gated oracle in front of a real Morpho Blue v1.0.0 market whose collateral is the
-///         custodial asset. While the proof fails for a blocking reason, every path that prices
-///         collateral (borrow, indebted withdrawCollateral, liquidate) reverts, and every path that does
-///         not (supply, withdraw, supplyCollateral, repay, debt-free withdrawCollateral) keeps working.
-///         Non-blocking reasons keep pricing, and a poked freeze ends after maxFreeze.
+///         custodial asset. While the proof fails for any reason, every path that prices collateral
+///         (borrow, indebted withdrawCollateral, liquidate) reverts, and every path that does not
+///         (supply, withdraw, supplyCollateral, repay, debt-free withdrawCollateral) keeps working.
+///         Once one continuous, poked incident lasts maxFreeze, the price comes back discounted.
 contract MorphoIntegrationTest is RPFull {
     using MarketParamsLib for MarketParams;
 
@@ -24,6 +24,8 @@ contract MorphoIntegrationTest is RPFull {
     /// @dev Collateral and loan token both have 6 decimals and trade 1:1, so the Morpho price is 1e36.
     uint256 internal constant PRICE = 1e36;
     uint32 internal constant MAX_FREEZE = 72 hours;
+    uint32 internal constant POKE_GAP = 6 hours;
+    uint16 internal constant POST_CAP_BPS = 5000;
 
     IMorpho internal morpho;
     OracleMock internal base;
@@ -76,13 +78,18 @@ contract MorphoIntegrationTest is RPFull {
         bondToken.approve(address(morpho), type(uint256).max);
     }
 
-    uint16 internal constant DEFAULT_MASK = uint16(
-        (1 << RPTypes.REASON_LIVE_SHORT) | (1 << RPTypes.REASON_UNDERCOLLATERALIZED)
-            | (1 << RPTypes.REASON_DISPUTED) | (1 << RPTypes.REASON_EXIT_DEFAULT)
-    );
-
     function _gated(IMorphoOracle b, address o, address a) internal returns (SolvencyGatedMorphoOracle) {
-        return new SolvencyGatedMorphoOracle(b, ISolvencyOracle(o), CID, a, DEFAULT_MASK, MAX_FREEZE);
+        return new SolvencyGatedMorphoOracle(b, ISolvencyOracle(o), CID, a, MAX_FREEZE, POKE_GAP, POST_CAP_BPS);
+    }
+
+    /// @dev A keeper pokes every 5 hours (inside the 6-hour gap) until `until`, then once more at `until`.
+    function _pokeUntil(uint256 until) internal {
+        while (vm.getBlockTimestamp() + 5 hours < until) {
+            vm.warp(vm.getBlockTimestamp() + 5 hours);
+            assertTrue(gated.poke());
+        }
+        vm.warp(until);
+        assertTrue(gated.poke());
     }
 
     function _insolvent() internal {
@@ -141,47 +148,128 @@ contract MorphoIntegrationTest is RPFull {
         gated.price();
     }
 
-    function testFuzz_priceFollowsTheBlockingMask(uint8 reason) public {
-        reason = uint8(bound(reason, 0, 9));
+    function testFuzz_everyFailureReasonBlocks(uint8 reason) public {
+        reason = uint8(bound(reason, 1, 9));
         _mockReason(reason);
-        bool blocked = reason != RPTypes.REASON_OK && ((DEFAULT_MASK >> reason) & 1) == 1;
-        assertEq(gated.blocks(reason), blocked);
-        if (blocked) {
-            _expectInsolvent(reason);
-            gated.price();
-        } else {
-            assertEq(gated.price(), PRICE);
-        }
+        _expectInsolvent(reason);
+        gated.price();
     }
 
-    function test_defaultMaskBlocksOnlyShortfallEvidence() public view {
-        assertEq(gated.blockingReasons(), gated.DEFAULT_BLOCKING_REASONS());
-        assertTrue(gated.blocks(RPTypes.REASON_LIVE_SHORT));
-        assertTrue(gated.blocks(RPTypes.REASON_UNDERCOLLATERALIZED));
-        assertTrue(gated.blocks(RPTypes.REASON_DISPUTED));
-        assertTrue(gated.blocks(RPTypes.REASON_EXIT_DEFAULT));
-        assertFalse(gated.blocks(RPTypes.REASON_STALE));
-        assertFalse(gated.blocks(RPTypes.REASON_MULTIPLIER_DRIFT));
-        assertFalse(gated.blocks(RPTypes.REASON_INSUFFICIENT_SAMPLES));
-        assertFalse(gated.blocks(RPTypes.REASON_NO_EPOCH));
-        assertFalse(gated.blocks(RPTypes.REASON_INACTIVE));
-        assertFalse(gated.blocks(RPTypes.REASON_OK));
-    }
-
-    function test_constructorsRejectZero() public {
+    function test_constructorsRejectBadParams() public {
         IMorphoOracle b = IMorphoOracle(address(base));
         ISolvencyOracle o = ISolvencyOracle(address(oracle));
+        address a = address(asset);
         vm.expectRevert(SolvencyGatedMorphoOracle.ZeroAddress.selector);
-        new SolvencyGatedMorphoOracle(IMorphoOracle(address(0)), o, CID, address(asset), DEFAULT_MASK, MAX_FREEZE);
+        new SolvencyGatedMorphoOracle(IMorphoOracle(address(0)), o, CID, a, MAX_FREEZE, POKE_GAP, POST_CAP_BPS);
         vm.expectRevert(SolvencyGatedMorphoOracle.ZeroAddress.selector);
-        new SolvencyGatedMorphoOracle(b, o, CID, address(0), DEFAULT_MASK, MAX_FREEZE);
+        new SolvencyGatedMorphoOracle(b, o, CID, address(0), MAX_FREEZE, POKE_GAP, POST_CAP_BPS);
         vm.expectRevert(SolvencyGuard.ZeroOracle.selector);
-        new SolvencyGatedMorphoOracle(b, ISolvencyOracle(address(0)), CID, address(asset), DEFAULT_MASK, MAX_FREEZE);
+        new SolvencyGatedMorphoOracle(b, ISolvencyOracle(address(0)), CID, a, MAX_FREEZE, POKE_GAP, POST_CAP_BPS);
         vm.expectRevert(SolvencyGatedMorphoOracle.ZeroMaxFreeze.selector);
-        new SolvencyGatedMorphoOracle(b, o, CID, address(asset), DEFAULT_MASK, 0);
+        new SolvencyGatedMorphoOracle(b, o, CID, a, 0, POKE_GAP, POST_CAP_BPS);
+        vm.expectRevert(SolvencyGatedMorphoOracle.BadPokeGap.selector);
+        new SolvencyGatedMorphoOracle(b, o, CID, a, MAX_FREEZE, 0, POST_CAP_BPS);
+        vm.expectRevert(SolvencyGatedMorphoOracle.BadPokeGap.selector);
+        new SolvencyGatedMorphoOracle(b, o, CID, a, MAX_FREEZE, MAX_FREEZE, POST_CAP_BPS);
+        vm.expectRevert(SolvencyGatedMorphoOracle.BadPostCapBps.selector);
+        new SolvencyGatedMorphoOracle(b, o, CID, a, MAX_FREEZE, POKE_GAP, 0);
+        vm.expectRevert(SolvencyGatedMorphoOracle.BadPostCapBps.selector);
+        new SolvencyGatedMorphoOracle(b, o, CID, a, MAX_FREEZE, POKE_GAP, 10_001);
         vm.expectRevert(FixedPriceMorphoOracle.ZeroPrice.selector);
         new FixedPriceMorphoOracle(0);
         assertEq(new FixedPriceMorphoOracle(PRICE).price(), PRICE);
+    }
+
+    // ── a shortfall hidden behind an earlier status() reason still blocks ──
+
+    function test_attack_freshEpochWithoutSamplesThenDrain() public {
+        _commit(2);
+        _setReserve(0);
+        (, uint8 reason) = _status(address(asset));
+        assertEq(reason, RPTypes.REASON_INSUFFICIENT_SAMPLES);
+        _expectInsolvent(RPTypes.REASON_INSUFFICIENT_SAMPLES);
+        gated.price();
+        _expectInsolvent(RPTypes.REASON_INSUFFICIENT_SAMPLES);
+        _borrow(1e6);
+        assertTrue(gated.poke(), "the freeze clock must start");
+    }
+
+    function test_attack_staleThenDrain() public {
+        vm.warp(vm.getBlockTimestamp() + 8 days);
+        _setReserve(0);
+        (, uint8 reason) = _status(address(asset));
+        assertEq(reason, RPTypes.REASON_STALE);
+        _expectInsolvent(RPTypes.REASON_STALE);
+        _borrow(1e6);
+    }
+
+    function test_attack_deactivatedCustodian() public {
+        registry.deactivateCustodian(CID);
+        _setReserve(0);
+        (, uint8 reason) = _status(address(asset));
+        assertEq(reason, RPTypes.REASON_INACTIVE);
+        _expectInsolvent(RPTypes.REASON_INACTIVE);
+        _borrow(1e6);
+    }
+
+    // ── the freeze clock belongs to one continuous incident ─────────────────
+
+    function test_attack_preStartedClockDoesNotPrepayTheNextFreeze() public {
+        _setReserve(0);
+        assertTrue(gated.poke());
+        _setReserve(2 * NEED);
+        (bool ok,) = _status(address(asset));
+        assertTrue(ok);
+
+        vm.warp(vm.getBlockTimestamp() + MAX_FREEZE + 1);
+        _setReserve(0);
+        (bool running,,,) = gated.freezeState();
+        assertFalse(running, "an old clock must be void");
+        _expectInsolvent(RPTypes.REASON_LIVE_SHORT);
+        gated.price();
+        _expectInsolvent(RPTypes.REASON_LIVE_SHORT);
+        _borrow(1e6);
+
+        gated.poke();
+        assertEq(gated.freezeStartedAt(), vm.getBlockTimestamp(), "the next poke starts a new incident");
+    }
+
+    function test_continuousIncidentPricesAtDiscountAfterCap() public {
+        _borrow(500e6);
+        _insolvent();
+        assertTrue(gated.poke());
+        uint256 started = vm.getBlockTimestamp();
+
+        _pokeUntil(started + MAX_FREEZE - 1);
+        vm.prank(liquidator);
+        _expectInsolvent(RPTypes.REASON_LIVE_SHORT);
+        morpho.liquidate(mp, borrower, 100e6, 0, "");
+
+        vm.warp(started + MAX_FREEZE);
+        assertEq(gated.price(), (PRICE * POST_CAP_BPS) / 10_000, "discounted, not full price");
+        (bool running, uint64 s, uint64 capEndsAt,) = gated.freezeState();
+        assertTrue(running);
+        assertEq(s, started);
+        assertEq(capEndsAt, started + MAX_FREEZE);
+
+        vm.expectRevert(bytes("insufficient collateral"));
+        _borrow(1e6);
+
+        vm.prank(liquidator);
+        morpho.liquidate(mp, borrower, 100e6, 0, "");
+        assertLt(morpho.position(id, borrower).collateral, 1000e6, "the underwater loan must clear");
+    }
+
+    function test_capWithoutARecentPokeStillReverts() public {
+        _insolvent();
+        gated.poke();
+        uint256 started = vm.getBlockTimestamp();
+        vm.warp(started + MAX_FREEZE);
+        _expectInsolvent(RPTypes.REASON_LIVE_SHORT);
+        gated.price();
+
+        gated.poke();
+        assertEq(gated.freezeStartedAt(), vm.getBlockTimestamp(), "a lapsed incident restarts");
     }
 
     // ── inside Morpho Blue ─────────────────────────────────────────────────
@@ -240,42 +328,6 @@ contract MorphoIntegrationTest is RPFull {
         assertEq(morpho.position(id, borrower).collateral, 1000e6, "collateral seized while unpriced");
     }
 
-    function test_staleKeepsBorrowAndLiquidationWorking() public {
-        vm.warp(vm.getBlockTimestamp() + 8 days);
-        (bool ok, uint8 reason) = _status(address(asset));
-        assertFalse(ok);
-        assertEq(reason, RPTypes.REASON_STALE);
-
-        _underwater();
-        vm.prank(liquidator);
-        morpho.liquidate(mp, borrower, 100e6, 0, "");
-        assertEq(morpho.position(id, borrower).collateral, 900e6, "a missed publish must not shield a bad loan");
-    }
-
-    function test_splitDriftKeepsPricing() public {
-        _mockReason(RPTypes.REASON_MULTIPLIER_DRIFT);
-        _borrow(1e6);
-        assertEq(bondToken.balanceOf(borrower), 1e6);
-    }
-
-    function test_freezeEndsAfterMaxFreezeSoLiquidationsClear() public {
-        _underwater();
-        _insolvent();
-        assertTrue(gated.poke());
-        uint256 started = vm.getBlockTimestamp();
-        assertEq(gated.freezeStartedAt(), started);
-
-        vm.warp(started + MAX_FREEZE - 1);
-        vm.prank(liquidator);
-        _expectInsolvent(RPTypes.REASON_LIVE_SHORT);
-        morpho.liquidate(mp, borrower, 100e6, 0, "");
-
-        vm.warp(started + MAX_FREEZE);
-        vm.prank(liquidator);
-        morpho.liquidate(mp, borrower, 100e6, 0, "");
-        assertEq(morpho.position(id, borrower).collateral, 900e6, "freeze must not outlast maxFreeze");
-    }
-
     function test_unpokedFreezeHoldsAndPokeIsIdempotent() public {
         _insolvent();
         vm.warp(vm.getBlockTimestamp() + MAX_FREEZE + 1);
@@ -295,6 +347,7 @@ contract MorphoIntegrationTest is RPFull {
         _setReserve(2 * NEED);
         assertFalse(gated.poke());
         assertEq(gated.freezeStartedAt(), 0);
+        assertEq(gated.lastFailSeenAt(), 0);
 
         vm.warp(vm.getBlockTimestamp() + MAX_FREEZE + 1);
         _setReserve(2 * NEED);

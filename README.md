@@ -7,7 +7,7 @@ Open-source proof of reserves and proof of exit for custodians of **USDG** and *
 shipped as one modifier any lending market can add: `onlySolvent(asset)`.
 
 **Live demo:** [reserveproof-teal.vercel.app](https://reserveproof-teal.vercel.app) (Kopi Wallet on Robinhood testnet and Arbitrum Sepolia)
-· **142 tests** (`npm run test:count`) · 13 of 13 contracts verified on both testnets
+· **145 tests** (`npm run test:count`) · 13 of 13 contracts verified on both testnets
 
 ## Why
 
@@ -89,44 +89,58 @@ shows it flipping from Allowed to `Insolvent (STALE)` etc. against the live cont
 
 Morpho markets are immutable, so the guard goes in front of the market's oracle:
 [`SolvencyGatedMorphoOracle`](src/integrations/SolvencyGatedMorphoOracle.sol) forwards the base oracle's
-`price()` and reverts `Insolvent(reason)` only when there is evidence the custodian is short.
+`price()` and reverts `Insolvent(reason)` whenever the custodian's proof fails, for any reason.
 
 ```solidity
 IOracle gated = new SolvencyGatedMorphoOracle(
     existingOracle, solvencyOracle, custodianId, TSLA,
-    DEFAULT_BLOCKING_REASONS, // LIVE_SHORT, UNDERCOLLATERALIZED, DISPUTED, EXIT_DEFAULT
-    72 hours                  // longest a freeze can last after anyone calls poke()
+    72 hours, // maxFreeze: how long one continuous failure blocks pricing
+    6 hours,  // maxPokeGap: an incident clock nobody pokes for this long is void
+    5000      // postCapBps: after maxFreeze, price at 50% of the base oracle
 );
 // createMarket({loanToken: USDG, collateralToken: TSLA, oracle: gated, irm, lltv})
 ```
 
-The trade-off, stated plainly: Morpho calls `price()` in `borrow`, indebted `withdrawCollateral` and
-`liquidate` alike, so while the wrapper reverts, underwater loans cannot be liquidated either. The wrapper
-limits that in two ways:
+**Every failed proof blocks.** `status()` reports only the first failing check, and `INACTIVE`, `NO_EPOCH`,
+`STALE` and `INSUFFICIENT_SAMPLES` are checked before `LIVE_SHORT`. A wrapper that ignored any of them
+could keep quoting full price while the reserves are drained behind that earlier reason.
 
-- **It blocks only on shortfall evidence.** A missed publish (`STALE`), an unaccounted stock split
-  (`MULTIPLIER_DRIFT`), missing samples or no epoch yet keep forwarding the price, so they never freeze
-  liquidations.
-- **The freeze is bounded.** Anyone can call `poke()` during a blocking failure; `maxFreeze` later the
-  price flows again and liquidations clear, so a custodian can't shield a borrower indefinitely. The freeze
-  is a circuit breaker that buys vault curators time to pull liquidity or set caps to zero.
+The trade-off, stated plainly: Morpho calls `price()` in `borrow`, indebted `withdrawCollateral` and
+`liquidate` alike, so while the wrapper reverts, underwater loans can't be liquidated either. So the
+freeze is bounded, and tied to one incident:
+
+- **One continuous incident.** Anyone can call `poke()` while the proof fails. The first poke starts the
+  clock and later pokes keep it alive. If nobody pokes for `maxPokeGap`, the clock is void, and the next
+  poke starts a new incident. A clock started during an earlier, since-restored shortfall therefore
+  can't pre-pay the next freeze. A healthy poke clears it.
+- **After the cap, a discounted price, not full value.** Once one incident has lasted `maxFreeze`,
+  `price()` returns the base price times `postCapBps`. Underwater loans become liquidatable, and new
+  borrowing reopens only at half value. Liquidators have every reason to keep poking.
+
+The residual risk: a custodian can hold a visible failure for 72 hours while someone keeps poking, then
+drain. By then the market has been frozen for three days, which is time for vault curators to pull
+liquidity or set caps to zero, and it prices the collateral at half.
 
 It reverts instead of returning 0 because a zero price would let liquidators seize every position for
 free. `supply`, `withdraw`, `supplyCollateral`, `repay` and debt-free exits always work because Morpho
 skips the oracle for positions without debt.
-[`test/foundry/MorphoIntegration.t.sol`](test/foundry/MorphoIntegration.t.sol) runs each path, including
-liquidation during `STALE` and after the freeze cap, against the unmodified Morpho Blue v1.0.0 core.
+[`test/foundry/MorphoIntegration.t.sol`](test/foundry/MorphoIntegration.t.sol) runs each path against the
+unmodified Morpho Blue v1.0.0 core, including:
+
+- a drain hidden behind `INSUFFICIENT_SAMPLES`, `STALE` or `INACTIVE`;
+- a pre-started clock;
+- liquidation at the discounted price after the cap.
 
 | Network | SolvencyGatedMorphoOracle (mTSLA, base 250 USDG) |
 |---|---|
-| Robinhood testnet | [`0x09a9…A40D`](https://explorer.testnet.chain.robinhood.com/address/0x09a99f5692ce7f714A2e5E859fDB0C3e60FFA40D#code) |
-| Arbitrum Sepolia | [`0x5355…88dc`](https://repo.sourcify.dev/421614/0x53555dCbb4da158ec1A588647dD72f4a62a488dc) |
+| Robinhood testnet | [`0x36a8…03B8`](https://explorer.testnet.chain.robinhood.com/address/0x36a84f430973d2AE6B2Cc4710003204027c203B8#code) |
+| Arbitrum Sepolia | [`0xdAD1…4aD4`](https://repo.sourcify.dev/421614/0xdAD1A4478C30a87EBa2DBd64CE21E8eFAb354aD4) |
 
 ## Stack
 
 - Solidity 0.8.24
 - Hardhat (compile / test)
-- **142 tests** (`npm run test:count`, printed in CI): 49 Hardhat, 61 Foundry fuzz properties, 18 Foundry unit tests and 14 stateful invariants.
+- **145 tests** (`npm run test:count`, printed in CI): 50 Hardhat, 61 Foundry fuzz properties, 20 Foundry unit tests and 14 stateful invariants.
 - **Fuzzed with Foundry:** property tests on `MerkleSumVerifier`, every `SolvencyOracle` reason code (coverage boundary, sample-dip window dressing, staleness, disputes, split drift, reason priority), the lending vault, registry and config ratchets, ledger commits and the Morpho wrapper inside a real Morpho Blue market.
 - **Invariant-tested + Slither-scanned:** handler-driven invariants on the `DisputeModule` challenge queue, `ExitRight` bond accounting and the vault (no borrow while insolvent; repay and debt-free exit never blocked), plus a triaged Slither report: [docs/SECURITY-SCAN.md](docs/SECURITY-SCAN.md).
 - OpenZeppelin Contracts 5.1.0

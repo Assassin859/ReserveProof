@@ -1,14 +1,14 @@
 /**
- * Deploy a Morpho Blue oracle for the demo custodian's mTSLA that stops pricing while there is
- * evidence of a shortfall, for at most MAX_FREEZE_HOURS after a poke: FixedPriceMorphoOracle (the
- * vault's demo price, in Morpho's 1e36 scale) wrapped by SolvencyGatedMorphoOracle. Neither testnet
- * has Morpho Blue, so this proves the wrapper live; on a chain with Morpho, pass
- * BASE_ORACLE=<existing market oracle> and ASSET=<collateral> instead.
+ * Deploy a Morpho Blue oracle for the demo custodian's mTSLA that stops pricing while the proof
+ * fails, and prices at POST_CAP_BPS of the base once one continuously poked incident lasts
+ * MAX_FREEZE_HOURS: FixedPriceMorphoOracle (the vault's demo price, in Morpho's 1e36 scale) wrapped
+ * by SolvencyGatedMorphoOracle. Neither testnet has Morpho Blue, so this proves the wrapper live; on
+ * a chain with Morpho, pass BASE_ORACLE=<existing market oracle> and ASSET=<collateral> instead.
  *
  *   npm run morpho:deploy:rh      # or :arb
  * Env: BASE_ORACLE (default: the deployment's FixedPriceMorphoOracle, deployed if missing),
  *      ASSET (default the deployment's MockStockToken), MAX_FREEZE_HOURS (default 72),
- *      BLOCKING_REASONS (bitmask, default the contract's DEFAULT_BLOCKING_REASONS)
+ *      MAX_POKE_GAP_HOURS (default 6), POST_CAP_BPS (default 5000)
  */
 import hre from "hardhat";
 import { ethers } from "hardhat";
@@ -40,21 +40,18 @@ async function main() {
 
   const Gated = await ethers.getContractFactory("SolvencyGatedMorphoOracle");
   const maxFreeze = Math.round(Number(process.env.MAX_FREEZE_HOURS || "72") * 3600);
-  let mask = process.env.BLOCKING_REASONS ? Number(process.env.BLOCKING_REASONS) : undefined;
-  if (mask === undefined) {
-    // DEFAULT_BLOCKING_REASONS: LIVE_SHORT | UNDERCOLLATERALIZED | DISPUTED | EXIT_DEFAULT
-    mask = (1 << 6) | (1 << 5) | (1 << 3) | (1 << 8);
-  }
+  const maxPokeGap = Math.round(Number(process.env.MAX_POKE_GAP_HOURS || "6") * 3600);
+  const postCapBps = Number(process.env.POST_CAP_BPS || "5000");
 
-  const gated = await Gated.deploy(base, c.SolvencyOracle, dep.custodianId, asset, mask, maxFreeze);
+  const gated = await Gated.deploy(base, c.SolvencyOracle, dep.custodianId, asset, maxFreeze, maxPokeGap, postCapBps);
   await gated.waitForDeployment();
-  if (Number(await gated.blockingReasons()) !== Number(await gated.DEFAULT_BLOCKING_REASONS()) && !process.env.BLOCKING_REASONS) {
-    throw new Error("script default mask drifted from the contract's DEFAULT_BLOCKING_REASONS");
-  }
   c.SolvencyGatedMorphoOracle = await gated.getAddress();
-  dep.morpho = { ...(dep.morpho ?? {}), baseOracle: base, asset, blockingReasons: mask, maxFreeze };
+  const { blockingReasons: _dropped, ...prev } = dep.morpho ?? {};
+  dep.morpho = { ...prev, baseOracle: base, asset, maxFreeze, maxPokeGap, postCapBps };
   fs.writeFileSync(depPath, JSON.stringify(dep, null, 2));
-  console.log(`SolvencyGatedMorphoOracle: ${c.SolvencyGatedMorphoOracle} (mask ${mask}, maxFreeze ${maxFreeze}s)`);
+  console.log(
+    `SolvencyGatedMorphoOracle: ${c.SolvencyGatedMorphoOracle} (maxFreeze ${maxFreeze}s, pokeGap ${maxPokeGap}s, post-cap ${postCapBps} bps)`
+  );
 
   try {
     console.log(`price() = ${await gated.price()}`);

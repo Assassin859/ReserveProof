@@ -2,7 +2,7 @@
 
 **Live demo:** [reserveproof-teal.vercel.app](https://reserveproof-teal.vercel.app) · **Repo:** https://github.com/Assassin859/ReserveProof
 
-**142 tests** (49 Hardhat + 61 Foundry fuzz + 18 Foundry unit + 14 stateful invariants) · **13 of 13 contracts verified on both testnets** · **SolvencyGatedMorphoOracle tested against the real Morpho Blue v1.0.0 core**
+**145 tests** (50 Hardhat + 61 Foundry fuzz + 20 Foundry unit + 14 stateful invariants) · **13 of 13 contracts verified on both testnets** · **SolvencyGatedMorphoOracle tested against the real Morpho Blue v1.0.0 core**
 
 See [VERIFY.md](./VERIFY.md) for how to check every claim below yourself.
 
@@ -31,26 +31,39 @@ contract MyMarket is SolvencyGuard {
 For Morpho Blue, where markets can't be modified, wrap the market's existing oracle instead:
 
 ```solidity
-// price() forwards the base oracle, and reverts Insolvent(reason) only on evidence of a shortfall,
-// for at most 72h after anyone pokes it.
-new SolvencyGatedMorphoOracle(existingOracle, solvencyOracle, custodianId, TSLA, DEFAULT_BLOCKING_REASONS, 72 hours);
+// price() forwards the base oracle and reverts Insolvent(reason) whenever the proof fails. Once one
+// continuously poked incident lasts 72h, it prices at 50% so liquidations can clear.
+new SolvencyGatedMorphoOracle(existingOracle, solvencyOracle, custodianId, TSLA, 72 hours, 6 hours, 5000);
 ```
 
+**Every failed proof blocks.** The oracle reports only its first failing check (`STALE`, missing samples
+and a deactivated custodian come before `LIVE_SHORT`), so ignoring any reason would let a drain hide
+behind it.
+
 The trade-off: Morpho calls `price()` in `borrow`, indebted `withdrawCollateral` and `liquidate` alike, so
-a reverting oracle also stops liquidations. The wrapper therefore blocks only on shortfall evidence
-(`LIVE_SHORT`, `UNDERCOLLATERALIZED`, `DISPUTED`, `EXIT_DEFAULT`); a missed publish or an unaccounted split
-keeps the price flowing. Any freeze ends `maxFreeze` after the first `poke()`, so a custodian can't shield a
-borrower and lenders aren't left with bad debt. It reverts rather than returning 0 because a zero price
-would make every position liquidatable for free. `supply`, `withdraw`, `supplyCollateral`, `repay` and
-debt-free exits always work, because Morpho skips the oracle for positions without debt.
-[`MorphoIntegration.t.sol`](../test/foundry/MorphoIntegration.t.sol) proves each path, including liquidation
-while `STALE` and after the freeze cap, against the unmodified Morpho Blue core.
+a reverting oracle also stops liquidations. The freeze is therefore bounded to one incident.
+
+- `poke()` starts the clock and keeps it alive.
+- A clock nobody pokes for 6 hours is void, so a clock started during an earlier shortfall can't pre-pay
+  the next freeze.
+- After 72 hours, the price comes back at 50%, not full value. Underwater loans clear, and new borrowing
+  reopens only at half value.
+
+It reverts rather than returning 0 because a zero price would make every position liquidatable for free.
+`supply`, `withdraw`, `supplyCollateral`, `repay` and debt-free exits always work, because Morpho skips
+the oracle for positions without debt.
+[`MorphoIntegration.t.sol`](../test/foundry/MorphoIntegration.t.sol) proves each path against the
+unmodified Morpho Blue core, including:
+
+- a drain hidden behind `INSUFFICIENT_SAMPLES`, `STALE` or `INACTIVE`;
+- a pre-started clock;
+- liquidation at the discounted price after the cap.
 
 ## By the numbers (the build)
 
 | | |
 |---|---|
-| Tests | **142**: 49 Hardhat, 61 Foundry fuzz properties (512 runs each), 18 Foundry unit tests, 14 stateful invariants (128 runs × depth 64, `fail_on_revert`) across the oracle, Merkle-sum proofs, the vault, registry/config, the ledger, disputes, ExitRight and the Morpho wrapper. `npm run test:count` prints the breakdown; Slither triage in [SECURITY-SCAN.md](./SECURITY-SCAN.md) |
+| Tests | **145**: 50 Hardhat, 61 Foundry fuzz properties (512 runs each), 20 Foundry unit tests, 14 stateful invariants (128 runs × depth 64, `fail_on_revert`) across the oracle, Merkle-sum proofs, the vault, registry/config, the ledger, disputes, ExitRight and the Morpho wrapper. `npm run test:count` prints the breakdown; Slither triage in [SECURITY-SCAN.md](./SECURITY-SCAN.md) |
 | Chains live | **2** testnets: Robinhood Chain testnet (home) and Arbitrum Sepolia |
 | Contracts verified | **13 of 13 on each chain**: Blockscout on Robinhood, Sourcify exact match on Arbitrum |
 | Assets under proof | **3** on Robinhood testnet: mTSLA (ERC-8056 mock), USDG, and Robinhood's real testnet **TSLA** stock token ([`0xC9f9…Bd4E`](https://explorer.testnet.chain.robinhood.com/address/0xC9f9c86933092BbbfFF3CCb4b105A4A94bf3Bd4E)); mTSLA is also allocated on Arbitrum |
@@ -113,14 +126,14 @@ Persona: **Kopi Wallet** (fictional SEA custodian). Everything below runs on the
 
 | t | Scene | What judges see |
 |---|---|---|
-| 0–10s | Hero + mainnet numbers | 675M USDG on Robinhood Chain mainnet; 50 stock tokens ($158M supply) used as Morpho collateral in 167 markets with 675K USDG borrowed; no reserve-proof oracle found behind any of them; 142 tests under the CTAs |
+| 0–10s | Hero + mainnet numbers | 675M USDG on Robinhood Chain mainnet; 50 stock tokens ($158M supply) used as Morpho collateral in 167 markets with 675K USDG borrowed; no reserve-proof oracle found behind any of them; 145 tests under the CTAs |
 | 10–15s | Live strip | Latest epoch, last publish time, 200% coverage vs the 103% floor, 13/13 contracts verified; mTSLA, USDG and real TSLA all solvent |
 | 15–20s | 1 One wallet, one custodian | The reserve wallet is bound to Kopi; a second custodian would revert `WalletTaken` |
 | 20–30s | 2 Liabilities vs reserves | Owed 500 mTSLA, live reserves 1,000 mTSLA, coverage above the floor → solvent |
 | 30–45s | 3 Verify my balance | *Try demo user* → browser rebuilds the tree, root matches on-chain, leaf proven; switch to TSLA to prove 1.5 real TSLA |
-| 45–85s | 4 What-if simulator | Drain → `LIVE_SHORT`, skip 8 days → `STALE`, stock split → `MULTIPLIER_DRIFT`, fraud dispute → `DISPUTED`; `GatedPayout` and the lending vault (borrow USDG, withdraw collateral while in debt) flip from Allowed to `Insolvent (reason)` in every scenario, while repaying and debt-free withdrawal stay open. The Morpho oracle row goes from `250 USDG per mTSLA` to `Insolvent (6)` on the drain and `Insolvent (3)` on the dispute, and keeps pricing on stale and split (by design, so liquidations keep working) |
+| 45–85s | 4 What-if simulator | Drain → `LIVE_SHORT`, skip 8 days → `STALE`, stock split → `MULTIPLIER_DRIFT`, fraud dispute → `DISPUTED`; `GatedPayout` and the lending vault (borrow USDG, withdraw collateral while in debt) flip from Allowed to `Insolvent (reason)` in every scenario, while repaying and debt-free withdrawal stay open. The Morpho oracle row goes from `250 USDG per mTSLA` to `Insolvent (reason)` in all four scenarios |
 | 85–95s | 5 ExitRight | Live bonded claim opened by the demo user and settled by the operator, with explorer links |
-| 95–110s | Morpho (code + terminal) | `SolvencyGatedMorphoOracle` in one constructor line; `forge test` runs `MorphoIntegration` against the real Morpho Blue core: on a real shortfall borrow is blocked with `Insolvent(6)` and repay and lender withdraw still work; on `STALE` borrow and liquidation keep working; after the 72-hour freeze cap, `price()` forwards again and an underwater position is liquidated |
+| 95–110s | Morpho (code + terminal) | `SolvencyGatedMorphoOracle` in one constructor line; `forge test` runs `MorphoIntegration` against the real Morpho Blue core: a drain hidden behind a fresh unsampled epoch, `STALE` or a deactivated custodian still blocks borrow, while repay and lender withdraw work; a pre-started clock buys nothing; after 72 hours of one poked incident, `price()` returns 50% of the base and an underwater position is liquidated |
 
 Local rehearsal with real state changes (no testnet gas):
 
@@ -146,7 +159,7 @@ The core contracts share addresses on both chains (identical deployer nonce sequ
 | GatedPayout | [0xed67…a430](https://explorer.testnet.chain.robinhood.com/address/0xed67EC461D64e42ed1472d3d74cbb32ee143a430#code) | [Sourcify](https://repo.sourcify.dev/421614/0xed67EC461D64e42ed1472d3d74cbb32ee143a430) |
 | MockStockToken (mTSLA) | [0x6606…A248](https://explorer.testnet.chain.robinhood.com/address/0x66069A805d8c96a710B800066FdcEAfdfBcaA248#code) | [Sourcify](https://repo.sourcify.dev/421614/0x66069A805d8c96a710B800066FdcEAfdfBcaA248) |
 | GuardedLendingVault | [0x6c7C…73a9](https://explorer.testnet.chain.robinhood.com/address/0x6c7C5100C812e1c95B2D745a33004Ef85E4573a9#code) | [0x99Eb…46EF](https://repo.sourcify.dev/421614/0x99EbFe9eB529cfE13828ba42684761B6920046EF) |
-| SolvencyGatedMorphoOracle (mTSLA, 72h freeze cap) | [0x09a9…A40D](https://explorer.testnet.chain.robinhood.com/address/0x09a99f5692ce7f714A2e5E859fDB0C3e60FFA40D#code) | [0x5355…88dc](https://repo.sourcify.dev/421614/0x53555dCbb4da158ec1A588647dD72f4a62a488dc) |
+| SolvencyGatedMorphoOracle (mTSLA, 72h cap, then 50%) | [0x36a8…03B8](https://explorer.testnet.chain.robinhood.com/address/0x36a84f430973d2AE6B2Cc4710003204027c203B8#code) | [0xdAD1…4aD4](https://repo.sourcify.dev/421614/0xdAD1A4478C30a87EBa2DBd64CE21E8eFAb354aD4) |
 | FixedPriceMorphoOracle (base, 250 USDG/mTSLA) | [0xb505…391B](https://explorer.testnet.chain.robinhood.com/address/0xb50515952ABF6332cdd58F07292357980A1B391B#code) | [0x254B…65cb](https://repo.sourcify.dev/421614/0x254B0D3aC4bA80B5AfADBa73A3c78D2a495E65cb) |
 | TSLA (Robinhood's testnet stock token, not ours) | [0xC9f9…Bd4E](https://explorer.testnet.chain.robinhood.com/address/0xC9f9c86933092BbbfFF3CCb4b105A4A94bf3Bd4E) | home chain only |
 | Full address book | [`deployments/robinhoodTestnet.json`](../deployments/robinhoodTestnet.json) | [`deployments/arbitrumSepolia.json`](../deployments/arbitrumSepolia.json) |
@@ -173,6 +186,7 @@ The core contracts share addresses on both chains (identical deployer nonce sequ
 | SETTLE-1 | `openEquivocationDispute` settles every live challenge in one loop (`_settleAllOpenChallenges`). With roughly 909 open challenges the loop exceeds the block gas limit, so an equivocation proof cannot be submitted while that many challenges are live. | **Open, disclosed.** Each challenge costs a 1 USDG bond from a distinct subject address, and any challenge left unanswered past its deadline already flips the oracle to DISPUTED, so the blocking window is bounded by the challenge window. Fix: paginated settlement. |
 | ADV-1 | Capital borrowed or flash-held for the whole sampling window can inflate reserves. | **Open, disclosed.** Samples take the minimum across distinct `arbBlockNumber` values with a minimum time gap, and the oracle then takes `min(sampleMin, live balance)`. This narrows the attack to capital held across every sample plus the read, but does not eliminate it. |
 | VAULT-1 | `GuardedLendingVault.withdrawCollateral` was gated even when the borrower had no debt, so a failing proof that never clears (for example an unresolved dispute) locked collateral that backed nothing, contradicting the contract's own "never trap anyone de-risking" rule. | **Fixed.** The solvency check applies only while the caller has debt; regression tests cover a 30-day lock and repay-then-withdraw while insolvent. Both testnet vaults redeployed and re-verified. |
+| WRAP-1 | The Morpho wrapper blocked only on "shortfall" reasons (`LIVE_SHORT`, `UNDERCOLLATERALIZED`, `DISPUTED`, `EXIT_DEFAULT`). `status()` reports only the first failing check, so a drain behind an earlier reason (a fresh epoch with no samples, 7 days without publishing, or a deactivated custodian) kept the wrapper quoting full price. Separately, its freeze clock could be started during a brief shortfall and left running, pre-paying the next freeze, and it reopened full-price borrowing after the cap. | **Fixed.** Every failure reason blocks. The clock belongs to one continuous incident (void if nobody pokes for 6 h), and after the 72 h cap the price is 50% of the base, not full value. Foundry regressions against real Morpho cover each attack. Redeployed and re-verified on both testnets. |
 | SAMPLE-1 | Reserve sampling is operator-only: `ReserveSampler.recordSample` reverts unless the caller is the custodian's operator, so the operator chooses when samples are taken. | **Open, disclosed.** The live-balance floor at read time limits what timing can buy (reserves must still be there when an integrator calls `isSolvent`). Permissionless sampling is future work. |
 
 Foundry fuzzing in CI covers Merkle-sum proofs ([`MerkleSumFuzz.t.sol`](../test/foundry/MerkleSumFuzz.t.sol)), every oracle reason code including sample-dip window dressing, drift and reason priority ([`SolvencyOracleFuzz.t.sol`](../test/foundry/SolvencyOracleFuzz.t.sol)), the lending vault ([`GuardedVaultFuzz.t.sol`](../test/foundry/GuardedVaultFuzz.t.sol)), registry and config ratchets ([`RegistryConfigFuzz.t.sol`](../test/foundry/RegistryConfigFuzz.t.sol)), ledger commits ([`LedgerFuzz.t.sol`](../test/foundry/LedgerFuzz.t.sol)) and the Morpho wrapper ([`MorphoIntegration.t.sol`](../test/foundry/MorphoIntegration.t.sol)). Stateful invariants cover the DisputeModule challenge queue, ExitRight bond accounting and the vault (no borrow while insolvent, repay and debt-free exit never blocked, accounting and LTV always hold), and every Slither finding is triaged in [SECURITY-SCAN.md](./SECURITY-SCAN.md).

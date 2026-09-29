@@ -100,6 +100,32 @@ own sampling. The oracle wraps `liveReserves` in `try/catch` and fails closed as
 `immutable` (a gas saving only). Changing the source now would break the byte-for-byte match with the
 contracts verified on Robinhood and Arbitrum, so this is batched with the next redeploy.
 
+## Manual review: WRAP-1, the Morpho wrapper reason mask (fixed)
+
+Slither can't see this class of bug, and an external review found it on live testnet calls. The previous
+`SolvencyGatedMorphoOracle` blocked only on `LIVE_SHORT`, `UNDERCOLLATERALIZED`, `DISPUTED` and
+`EXIT_DEFAULT`. `SolvencyOracle.status()` returns the first failing check, and `INACTIVE`, `NO_EPOCH`,
+`STALE` and `INSUFFICIENT_SAMPLES` come before `LIVE_SHORT`. So an operator could publish a fresh epoch
+without samples, or stop publishing for 7 days (or the owner could deactivate the custodian), and then
+drain. The wrapper saw only the earlier reason and kept quoting full price.
+
+Its freeze clock had two more problems:
+
+- It could be pre-started: a brief shortfall, a poke, then a restore. The leftover clock pre-paid the next
+  freeze.
+- After the cap it returned full price, which reopened full-value borrowing.
+
+The fix:
+
+- Every failure reason blocks.
+- The clock belongs to one continuous incident: it's void if no failing `poke()` lands within
+  `maxPokeGap` (6 h).
+- After `maxFreeze` (72 h), `price()` returns `postCapBps` (50%) of the base price.
+
+`MorphoIntegration.t.sol` has a regression for each attack against the real Morpho Blue core. The old
+wrapper addresses (`0x09a9…A40D` on Robinhood, `0x5355…88dc` on Arbitrum) stay on chain but are no longer
+referenced anywhere.
+
 ## Foundry invariants
 
 Handlers live in `test/foundry/*Invariants.t.sol` and share `test/foundry/helpers/RPBase.sol`: a real
@@ -110,7 +136,8 @@ Merkle-sum book that is re-committed at every new epoch.
 
 Random users challenge honest or inflated balances across epochs. The operator answers whatever it can
 prove, anyone expires overdue challenges, honest disputes are cleared through a newer matching epoch,
-and time warps up to 3 h per step.
+and time warps up to 3 h per step. `DisputeHandlerSmokeTest` walks every handler path deterministically,
+so the suite is known not to pass vacuously.
 
 | Invariant | Why it matters |
 |---|---|
