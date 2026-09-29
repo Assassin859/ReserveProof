@@ -945,4 +945,76 @@ describe("zz_poc_review — challenge grief / assetId / overdue", function () {
     await expect(f.disputes.expireChallenge(f.custodianId, asset, f.userA.address)).to.be
       .revertedWithCustomError(f.disputes, "NoChallenge");
   });
+
+  it("SETTLE-1: equivocation settles a bounded batch; anyone resumes the rest", async function () {
+    const f = await deployFixture();
+    const asset = await f.stock.getAddress();
+    const garbageRoot = ethers.id("settle-1");
+    const total = ethers.parseEther("300");
+    const alloc = [total];
+    await commitSigned(f, asset, 1, garbageRoot, total, [f.chainId], alloc, 2);
+
+    await expect(
+      f.disputes.settleChallengesAfterEquivocation(f.custodianId, asset, 10)
+    ).to.be.revertedWithCustomError(f.disputes, "NotPermanent");
+
+    const wallets: ReturnType<typeof ethers.Wallet.createRandom>[] = [];
+    const disputesAddr = await f.disputes.getAddress();
+    for (let i = 0; i < 70; i++) {
+      const w = ethers.Wallet.createRandom().connect(ethers.provider);
+      await ethers.provider.send("hardhat_setBalance", [w.address, "0x2386F26FC10000"]);
+      await f.usdg.mint(w.address, CHALLENGE_BOND);
+      await f.usdg.connect(w).approve(disputesAddr, CHALLENGE_BOND);
+      const stated = ethers.parseEther(String(i + 1));
+      const sig = await signBalanceStatement(
+        f.disputes,
+        f.operator,
+        f.custodianId,
+        asset,
+        1,
+        w.address,
+        stated
+      );
+      await f.disputes.connect(w).challengeInclusion(f.custodianId, asset, 1, w.address, stated, sig);
+      wallets.push(w);
+    }
+    expect(await f.disputes.openChallengeCount(f.custodianId, asset)).to.equal(70n);
+
+    const otherRoot = ethers.id("settle-1-fork");
+    const allocCmt = allocationCommitment([f.chainId], alloc);
+    const otherSig = await signEpochCommitment(
+      f.operator,
+      f.deploymentSalt,
+      f.custodianId,
+      f.assetId,
+      1,
+      otherRoot,
+      total,
+      allocCmt,
+      2
+    );
+    await f.disputes.openEquivocationDispute(f.custodianId, asset, 1, otherRoot, total, allocCmt, 2, otherSig);
+
+    const batch = await f.disputes.SETTLE_BATCH();
+    expect(batch).to.equal(64n);
+    expect(await f.disputes.openChallengeCount(f.custodianId, asset)).to.equal(6n);
+    expect(await f.disputes.challengeRefunds(wallets[63].address)).to.equal(CHALLENGE_BOND);
+    expect(await f.disputes.challengeRefunds(wallets[64].address)).to.equal(0n);
+
+    const [keeper] = await ethers.getSigners();
+    const page = await f.disputes
+      .connect(keeper)
+      .settleChallengesAfterEquivocation.staticCall(f.custodianId, asset, 100);
+    expect(page.settled).to.equal(6n);
+    expect(page.done).to.equal(true);
+    await expect(f.disputes.connect(keeper).settleChallengesAfterEquivocation(f.custodianId, asset, 100))
+      .to.emit(f.disputes, "ChallengesSettled")
+      .withArgs(f.custodianId, asset, 64n, 70n);
+
+    expect(await f.disputes.openChallengeCount(f.custodianId, asset)).to.equal(0n);
+    expect(await f.disputes.challengeRefunds(wallets[69].address)).to.equal(CHALLENGE_BOND);
+    expect(await f.usdg.balanceOf(disputesAddr)).to.equal(CHALLENGE_BOND * 70n);
+    await f.disputes.connect(wallets[69]).withdrawChallengeBond();
+    expect(await f.usdg.balanceOf(wallets[69].address)).to.equal(CHALLENGE_BOND);
+  });
 });

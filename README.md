@@ -7,7 +7,7 @@ Open-source proof of reserves and proof of exit for custodians of **USDG** and *
 shipped as one modifier any lending market can add: `onlySolvent(asset)`.
 
 **Live demo:** [reserveproof-teal.vercel.app](https://reserveproof-teal.vercel.app) (Kopi Wallet on Robinhood testnet and Arbitrum Sepolia)
-· **145 tests** (`npm run test:count`) · 13 of 13 contracts verified on both testnets
+· **150 tests** (`npm run test:count`) · every contract verified on both testnets
 
 ## Why
 
@@ -82,8 +82,8 @@ shows it flipping from Allowed to `Insolvent (STALE)` etc. against the live cont
 
 | Network | GuardedLendingVault | Demo borrower |
 |---|---|---|
-| Robinhood testnet | [`0x6c7C…73a9`](https://explorer.testnet.chain.robinhood.com/address/0x6c7C5100C812e1c95B2D745a33004Ef85E4573a9#code) | 10 mTSLA collateral, owes 1 USDG; 4 USDG liquidity |
-| Arbitrum Sepolia | [`0x99Eb…46EF`](https://repo.sourcify.dev/421614/0x99EbFe9eB529cfE13828ba42684761B6920046EF) | 10 mTSLA collateral, no debt (shows the debt-free exit) |
+| Robinhood testnet | [`0xBf5E…b8eF`](https://explorer.testnet.chain.robinhood.com/address/0xBf5E41bEAE435E7D19F8dD4E6928e2c2a198b8eF#code) | 10 mTSLA collateral, owes 1 USDG; 4 USDG liquidity |
+| Arbitrum Sepolia | [`0x2C2b…606C`](https://repo.sourcify.dev/421614/0x2C2b8B1BD101a177dee6C2f62ccED6C25e9a606C) | 10 mTSLA collateral, owes 1 USDG; 4 USDG liquidity (a mock USDG we own, [`0xa650…C35D`](https://repo.sourcify.dev/421614/0xa650A341583de45DfF8d5570236E39dfbf76C35D), since Paxos' test USDG isn't ours to mint) |
 
 ## Morpho Blue: wrap the oracle, not the market
 
@@ -133,16 +133,16 @@ unmodified Morpho Blue v1.0.0 core, including:
 
 | Network | SolvencyGatedMorphoOracle (mTSLA, base 250 USDG) |
 |---|---|
-| Robinhood testnet | [`0x36a8…03B8`](https://explorer.testnet.chain.robinhood.com/address/0x36a84f430973d2AE6B2Cc4710003204027c203B8#code) |
-| Arbitrum Sepolia | [`0xdAD1…4aD4`](https://repo.sourcify.dev/421614/0xdAD1A4478C30a87EBa2DBd64CE21E8eFAb354aD4) |
+| Robinhood testnet | [`0x55bc…847e`](https://explorer.testnet.chain.robinhood.com/address/0x55bcE99CF827F940D8138104e6dF0004630A847e#code) |
+| Arbitrum Sepolia | [`0xdE3b…c1ea`](https://repo.sourcify.dev/421614/0xdE3be6d66148290316F6bb4638E1EfE3233bC1ea) |
 
 ## Stack
 
 - Solidity 0.8.24
 - Hardhat (compile / test)
-- **145 tests** (`npm run test:count`, printed in CI): 50 Hardhat, 61 Foundry fuzz properties, 20 Foundry unit tests and 14 stateful invariants.
+- **150 tests** (`npm run test:count`, printed in CI): 51 Hardhat, 61 Foundry fuzz properties, 24 Foundry unit tests and 14 stateful invariants.
 - **Fuzzed with Foundry:** property tests on `MerkleSumVerifier`, every `SolvencyOracle` reason code (coverage boundary, sample-dip window dressing, staleness, disputes, split drift, reason priority), the lending vault, registry and config ratchets, ledger commits and the Morpho wrapper inside a real Morpho Blue market.
-- **Invariant-tested + Slither-scanned:** handler-driven invariants on the `DisputeModule` challenge queue, `ExitRight` bond accounting and the vault (no borrow while insolvent; repay and debt-free exit never blocked), plus a triaged Slither report: [docs/SECURITY-SCAN.md](docs/SECURITY-SCAN.md).
+- **Invariant-tested + Slither-scanned:** handler-driven invariants on the `DisputeModule` challenge queue (including equivocation and paged settlement), `ExitRight` bond accounting and the vault (no borrow while insolvent; repay and debt-free exit never blocked), plus a triaged Slither report: [docs/SECURITY-SCAN.md](docs/SECURITY-SCAN.md).
 - OpenZeppelin Contracts 5.1.0
 - Next.js + wagmi + viem demo UI (`packages/web`)
 
@@ -287,7 +287,7 @@ settles in one run; `status:rh` lists any unsettled claim with its deadline.
 
 - **Flash-loan / borrowed reserves:** samples use `min` across distinct `arbBlockNumber` values plus a time gap, then `min(sampleMin, liveBalance)`. Capital borrowed for the *entire* sampling window can still inflate reserves — documented, not fully eliminated.
 - **Operator-only sampling:** only the custodian's operator can call `recordSample`, so it chooses when samples land. The oracle's `min(sampleMin, liveBalance)` means reserves must still be present when an integrator reads `isSolvent`. Permissionless sampling is future work.
-- **Equivocation settle loop (SETTLE-1):** `openEquivocationDispute` settles every live challenge in one loop. At roughly 909 open challenges it exceeds block gas, so an equivocation proof can't land while that many are live. Each challenge costs a 1 USDG bond from a distinct address, and overdue challenges flip the oracle to DISPUTED anyway. Paginated settlement is future work.
+- **Equivocation settlement is paged (SETTLE-1, fixed):** an equivocation proof used to refund every open challenge in one loop and ran out of block gas at roughly 909 challenges. It now settles at most 64 inline, and anyone can refund the rest with `settleChallengesAfterEquivocation(custodianId, asset, maxCount)`. The oracle reports DISPUTED from the moment the proof lands, whether or not every refund has been paged through yet. [`EquivocationSettlement.t.sol`](test/foundry/EquivocationSettlement.t.sol) lands a proof over 2,000 open challenges.
 - **ExitRight bond ≠ full insurance:** the USDG bond is a deterrent with per-claim and in-flight caps. A bank run of many claims is an intentional stress case; unpaid claims beyond the bond still mark exit default.
 - **Per-chain allocation:** `isSolvent` on one chain means that chain’s **allocation** is covered, not that 100% of global liabilities sit there. Treat “fully backed” as AND across chains in the UI.
 - **Non-ZK omission:** users with a custodian-signed EIP-712 balance statement can prove omission via neighbours. Users with neither inclusion nor a statement cannot.

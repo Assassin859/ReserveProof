@@ -2,7 +2,7 @@
 
 **Live demo:** [reserveproof-teal.vercel.app](https://reserveproof-teal.vercel.app) · **Repo:** https://github.com/Assassin859/ReserveProof
 
-**145 tests** (50 Hardhat + 61 Foundry fuzz + 20 Foundry unit + 14 stateful invariants) · **13 of 13 contracts verified on both testnets** · **SolvencyGatedMorphoOracle tested against the real Morpho Blue v1.0.0 core**
+**150 tests** (51 Hardhat + 61 Foundry fuzz + 24 Foundry unit + 14 stateful invariants) · **every contract verified on both testnets** (13 on Robinhood, 14 on Arbitrum) · **SolvencyGatedMorphoOracle tested against the real Morpho Blue v1.0.0 core**
 
 See [VERIFY.md](./VERIFY.md) for how to check every claim below yourself.
 
@@ -63,9 +63,9 @@ unmodified Morpho Blue core, including:
 
 | | |
 |---|---|
-| Tests | **145**: 50 Hardhat, 61 Foundry fuzz properties (512 runs each), 20 Foundry unit tests, 14 stateful invariants (128 runs × depth 64, `fail_on_revert`) across the oracle, Merkle-sum proofs, the vault, registry/config, the ledger, disputes, ExitRight and the Morpho wrapper. `npm run test:count` prints the breakdown; Slither triage in [SECURITY-SCAN.md](./SECURITY-SCAN.md) |
+| Tests | **150**: 51 Hardhat, 61 Foundry fuzz properties (512 runs each), 24 Foundry unit tests, 14 stateful invariants (128 runs × depth 64, `fail_on_revert`) across the oracle, Merkle-sum proofs, the vault, registry/config, the ledger, disputes, ExitRight and the Morpho wrapper. `npm run test:count` prints the breakdown; Slither triage in [SECURITY-SCAN.md](./SECURITY-SCAN.md) |
 | Chains live | **2** testnets: Robinhood Chain testnet (home) and Arbitrum Sepolia |
-| Contracts verified | **13 of 13 on each chain**: Blockscout on Robinhood, Sourcify exact match on Arbitrum |
+| Contracts verified | **All of them**: 13 of 13 on Blockscout (Robinhood), 14 of 14 Sourcify exact match (Arbitrum, including the vault's own mock USDG) |
 | Assets under proof | **3** on Robinhood testnet: mTSLA (ERC-8056 mock), USDG, and Robinhood's real testnet **TSLA** stock token ([`0xC9f9…Bd4E`](https://explorer.testnet.chain.robinhood.com/address/0xC9f9c86933092BbbfFF3CCb4b105A4A94bf3Bd4E)); mTSLA is also allocated on Arbitrum |
 | Epochs committed | Re-published every 3 days by the [ops workflow](https://github.com/Assassin859/ReserveProof/actions/workflows/ops-epoch.yml) |
 | Integrations gated on solvency | **3**: `GatedPayout`, `GuardedLendingVault` (drop-in `onlySolvent`, [SolvencyGuard](../src/guards/SolvencyGuard.sol)) and [`SolvencyGatedMorphoOracle`](../src/integrations/SolvencyGatedMorphoOracle.sol) |
@@ -110,8 +110,7 @@ The wedge is the free integrator side: every protocol that gates on `isSolvent` 
 | # | Milestone | Deliverables | Done when |
 |---|---|---|---|
 | 1 | **Permissionless sampling** (closes SAMPLE-1) | Anyone can call `recordSample` in randomised windows, with a small keeper reward from the custodian's fee deposit; operator-only mode kept as a fallback | Invariant suite extended to non-operator samplers; deployed on both testnets; the ops workflow runs as a third-party keeper |
-| 2 | **Paginated equivocation settlement** (closes SETTLE-1) | `openEquivocationDispute` settles challenges in bounded batches with a resumable cursor, so no challenge count can push it past the block gas limit | Gas test with 5,000 open challenges; FIFO and dispute invariants still pass; external review of `DisputeModule` |
-| 3 | **Mainnet pilot** | Robinhood Chain and Arbitrum One deployment with one partner custodian on real USDG and stock tokens, plus one lending integration using `SolvencyGuard` | 90 days of uninterrupted epochs, a public status page, and a post-pilot report on coverage, incidents and costs |
+| 2 | **Mainnet pilot** | Robinhood Chain and Arbitrum One deployment with one partner custodian on real USDG and stock tokens, plus one lending integration using `SolvencyGuard` | 90 days of uninterrupted epochs, a public status page, and a post-pilot report on coverage, incidents and costs |
 
 ## Tracks
 
@@ -126,8 +125,8 @@ Persona: **Kopi Wallet** (fictional SEA custodian). Everything below runs on the
 
 | t | Scene | What judges see |
 |---|---|---|
-| 0–10s | Hero + mainnet numbers | 675M USDG on Robinhood Chain mainnet; 50 stock tokens ($158M supply) used as Morpho collateral in 167 markets with 675K USDG borrowed; no reserve-proof oracle found behind any of them; 145 tests under the CTAs |
-| 10–15s | Live strip | Latest epoch, last publish time, 200% coverage vs the 103% floor, 13/13 contracts verified; mTSLA, USDG and real TSLA all solvent |
+| 0–10s | Hero + mainnet numbers | 675M USDG on Robinhood Chain mainnet; 50 stock tokens ($158M supply) used as Morpho collateral in 167 markets with 675K USDG borrowed; no reserve-proof oracle found behind any of them; 150 tests under the CTAs |
+| 10–15s | Live strip | Latest epoch, last publish time, 200% coverage vs the 103% floor, every contract verified; mTSLA, USDG and real TSLA all solvent |
 | 15–20s | 1 One wallet, one custodian | The reserve wallet is bound to Kopi; a second custodian would revert `WalletTaken` |
 | 20–30s | 2 Liabilities vs reserves | Owed 500 mTSLA, live reserves 1,000 mTSLA, coverage above the floor → solvent |
 | 30–45s | 3 Verify my balance | *Try demo user* → browser rebuilds the tree, root matches on-chain, leaf proven; switch to TSLA to prove 1.5 real TSLA |
@@ -146,20 +145,20 @@ npm run demo:web          # http://localhost:3000
 
 ## Live deployment
 
-The core contracts share addresses on both chains (identical deployer nonce sequence); the lending vault and Morpho oracles were deployed later and differ per chain. Robinhood: all 13 contracts verified on Blockscout (`npm run verify:rh`). Arbitrum Sepolia: all 13 exact-match on Sourcify (`npm run verify:sourcify`).
+The registry, ledger, sampler, ExitRight and mTSLA share addresses on both chains (identical deployer nonce sequence). The dispute layer (DisputeModule, SolvencyOracle, the gated composers, the lending vault and the Morpho wrapper) was redeployed per chain for the SETTLE-1 fix, keeping every epoch and sample (`npm run disputes:redeploy:rh`; old addresses under `previous` in the deployment files). Robinhood: all 13 contracts verified on Blockscout (`npm run verify:rh`). Arbitrum Sepolia: all 14 exact-match on Sourcify (`npm run verify:sourcify`), including the vault's own mock USDG.
 
 | Contract | Robinhood testnet | Arbitrum Sepolia |
 |---|---|---|
 | CustodianRegistry | [0x364c…0F9E](https://explorer.testnet.chain.robinhood.com/address/0x364c1D50910e3FadED506d38FabeAFc828C30F9E#code) | [Sourcify](https://repo.sourcify.dev/421614/0x364c1D50910e3FadED506d38FabeAFc828C30F9E) |
 | LiabilityLedger | [0x1F6f…3537](https://explorer.testnet.chain.robinhood.com/address/0x1F6fAfc59FFe60f2d8d779d202be17d8b36b3537#code) | [Sourcify](https://repo.sourcify.dev/421614/0x1F6fAfc59FFe60f2d8d779d202be17d8b36b3537) |
 | ReserveSampler | [0x88ec…5616](https://explorer.testnet.chain.robinhood.com/address/0x88ecb274A5Eb6Dc3310c532b8c94795e65605616#code) | [Sourcify](https://repo.sourcify.dev/421614/0x88ecb274A5Eb6Dc3310c532b8c94795e65605616) |
-| DisputeModule | [0xA755…4f41](https://explorer.testnet.chain.robinhood.com/address/0xA755d7b51Ee9E452dB7de6D87Efca2aCC0834f41#code) | [Sourcify](https://repo.sourcify.dev/421614/0xA755d7b51Ee9E452dB7de6D87Efca2aCC0834f41) |
-| SolvencyOracle | [0xFeD7…8E2f](https://explorer.testnet.chain.robinhood.com/address/0xFeD7650622256e3c4CbC8642D0d4F230224D8E2f#code) | [Sourcify](https://repo.sourcify.dev/421614/0xFeD7650622256e3c4CbC8642D0d4F230224D8E2f) · [Arbiscan](https://sepolia.arbiscan.io/address/0xFeD7650622256e3c4CbC8642D0d4F230224D8E2f) |
+| DisputeModule (SETTLE-1 fix) | [0x7EBe…116b](https://explorer.testnet.chain.robinhood.com/address/0x7EBe151E45ff79DAb358cb5363F363385b12116b#code) | [0x59B7…EeE4](https://repo.sourcify.dev/421614/0x59B7613228a61091BFE9e4aA2607F12F6916EeE4) |
+| SolvencyOracle | [0x7eb2…86A7](https://explorer.testnet.chain.robinhood.com/address/0x7eb23Aa9D81a6a08af61FF1A5Ac8FBDD312686A7#code) | [0xe5c7…cD10](https://repo.sourcify.dev/421614/0xe5c748abc5649a32F99a6BBB296787E64486cD10) · [Arbiscan](https://sepolia.arbiscan.io/address/0xe5c748abc5649a32F99a6BBB296787E64486cD10) |
 | ExitRight | [0x2726…EfB6](https://explorer.testnet.chain.robinhood.com/address/0x272644a119088A096F7fDBFE76da71fF01C0EfB6#code) | [Sourcify](https://repo.sourcify.dev/421614/0x272644a119088A096F7fDBFE76da71fF01C0EfB6) |
-| GatedPayout | [0xed67…a430](https://explorer.testnet.chain.robinhood.com/address/0xed67EC461D64e42ed1472d3d74cbb32ee143a430#code) | [Sourcify](https://repo.sourcify.dev/421614/0xed67EC461D64e42ed1472d3d74cbb32ee143a430) |
+| GatedPayout | [0x075A…B176](https://explorer.testnet.chain.robinhood.com/address/0x075AD5416F2b10B228a8Ca9D8518b4cf5152B176#code) | [0x5c6A…d513](https://repo.sourcify.dev/421614/0x5c6Ae244BA83c024e4063C49D56f068E0A94d513) |
 | MockStockToken (mTSLA) | [0x6606…A248](https://explorer.testnet.chain.robinhood.com/address/0x66069A805d8c96a710B800066FdcEAfdfBcaA248#code) | [Sourcify](https://repo.sourcify.dev/421614/0x66069A805d8c96a710B800066FdcEAfdfBcaA248) |
-| GuardedLendingVault | [0x6c7C…73a9](https://explorer.testnet.chain.robinhood.com/address/0x6c7C5100C812e1c95B2D745a33004Ef85E4573a9#code) | [0x99Eb…46EF](https://repo.sourcify.dev/421614/0x99EbFe9eB529cfE13828ba42684761B6920046EF) |
-| SolvencyGatedMorphoOracle (mTSLA, 72h cap, then 50%) | [0x36a8…03B8](https://explorer.testnet.chain.robinhood.com/address/0x36a84f430973d2AE6B2Cc4710003204027c203B8#code) | [0xdAD1…4aD4](https://repo.sourcify.dev/421614/0xdAD1A4478C30a87EBa2DBd64CE21E8eFAb354aD4) |
+| GuardedLendingVault | [0xBf5E…b8eF](https://explorer.testnet.chain.robinhood.com/address/0xBf5E41bEAE435E7D19F8dD4E6928e2c2a198b8eF#code) | [0x2C2b…606C](https://repo.sourcify.dev/421614/0x2C2b8B1BD101a177dee6C2f62ccED6C25e9a606C) (lends its own mock USDG [0xa650…C35D](https://repo.sourcify.dev/421614/0xa650A341583de45DfF8d5570236E39dfbf76C35D)) |
+| SolvencyGatedMorphoOracle (mTSLA, 72h cap, then 50%) | [0x55bc…847e](https://explorer.testnet.chain.robinhood.com/address/0x55bcE99CF827F940D8138104e6dF0004630A847e#code) | [0xdE3b…c1ea](https://repo.sourcify.dev/421614/0xdE3be6d66148290316F6bb4638E1EfE3233bC1ea) |
 | FixedPriceMorphoOracle (base, 250 USDG/mTSLA) | [0xb505…391B](https://explorer.testnet.chain.robinhood.com/address/0xb50515952ABF6332cdd58F07292357980A1B391B#code) | [0x254B…65cb](https://repo.sourcify.dev/421614/0x254B0D3aC4bA80B5AfADBa73A3c78D2a495E65cb) |
 | TSLA (Robinhood's testnet stock token, not ours) | [0xC9f9…Bd4E](https://explorer.testnet.chain.robinhood.com/address/0xC9f9c86933092BbbfFF3CCb4b105A4A94bf3Bd4E) | home chain only |
 | Full address book | [`deployments/robinhoodTestnet.json`](../deployments/robinhoodTestnet.json) | [`deployments/arbitrumSepolia.json`](../deployments/arbitrumSepolia.json) |
@@ -183,7 +182,7 @@ The core contracts share addresses on both chains (identical deployer nonce sequ
 | ID | Finding | Status |
 |---|---|---|
 | FIFO-1 | The challenge queue stored bare addresses. When a user's answered challenge was followed by a new one, the stale queue slot pointed at the fresh challenge, so its later deadline could mask an older overdue challenge behind it and keep the oracle reporting solvent. | **Fixed** — queue entries carry a per-challenge sequence number and only count while `open && seq` matches ([regression test](../test/zz_poc_review.ts), "FIFO-1"). Deployed in the current testnet contracts. |
-| SETTLE-1 | `openEquivocationDispute` settles every live challenge in one loop (`_settleAllOpenChallenges`). With roughly 909 open challenges the loop exceeds the block gas limit, so an equivocation proof cannot be submitted while that many challenges are live. | **Open, disclosed.** Each challenge costs a 1 USDG bond from a distinct subject address, and any challenge left unanswered past its deadline already flips the oracle to DISPUTED, so the blocking window is bounded by the challenge window. Fix: paginated settlement. |
+| SETTLE-1 | `openEquivocationDispute` settled every live challenge in one loop (`_settleAllOpenChallenges`). With roughly 909 open challenges the loop exceeded the block gas limit, so an equivocation proof could not be submitted while that many challenges were live. | **Fixed.** The proof now settles at most 64 queue entries inline (about 2.3M gas whatever the queue length), and anyone can refund the rest in pages with `settleChallengesAfterEquivocation(custodianId, asset, maxCount)`, which resumes from a cursor. `expireChallenge` still refunds any single challenge. A Foundry test proves an equivocation with 2,000 open challenges and pages through every refund ([`EquivocationSettlement.t.sol`](../test/foundry/EquivocationSettlement.t.sol)); the dispute invariants now include equivocation and partial settlement. Redeployed and re-verified on both testnets. |
 | ADV-1 | Capital borrowed or flash-held for the whole sampling window can inflate reserves. | **Open, disclosed.** Samples take the minimum across distinct `arbBlockNumber` values with a minimum time gap, and the oracle then takes `min(sampleMin, live balance)`. This narrows the attack to capital held across every sample plus the read, but does not eliminate it. |
 | VAULT-1 | `GuardedLendingVault.withdrawCollateral` was gated even when the borrower had no debt, so a failing proof that never clears (for example an unresolved dispute) locked collateral that backed nothing, contradicting the contract's own "never trap anyone de-risking" rule. | **Fixed.** The solvency check applies only while the caller has debt; regression tests cover a 30-day lock and repay-then-withdraw while insolvent. Both testnet vaults redeployed and re-verified. |
 | WRAP-1 | The Morpho wrapper blocked only on "shortfall" reasons (`LIVE_SHORT`, `UNDERCOLLATERALIZED`, `DISPUTED`, `EXIT_DEFAULT`). `status()` reports only the first failing check, so a drain behind an earlier reason (a fresh epoch with no samples, 7 days without publishing, or a deactivated custodian) kept the wrapper quoting full price. Separately, its freeze clock could be started during a brief shortfall and left running, pre-paying the next freeze, and it reopened full-price borrowing after the cap. | **Fixed.** Every failure reason blocks. The clock belongs to one continuous incident (void if nobody pokes for 6 h), and after the 72 h cap the price is 50% of the base, not full value. Foundry regressions against real Morpho cover each attack. Redeployed and re-verified on both testnets. |
@@ -193,6 +192,6 @@ Foundry fuzzing in CI covers Merkle-sum proofs ([`MerkleSumFuzz.t.sol`](../test/
 
 ## Residual risks (one-liner for judges)
 
-Flash-borrowed reserves across the full sample window, operator-only sampling, the equivocation settle loop's gas ceiling (SETTLE-1), ExitRight bond ≠ full insurance, per-chain allocation ≠ global 100% coverage, and USDG proofs verify only on their home chain (leaves bind the local token address) — documented in README.
+Flash-borrowed reserves across the full sample window, operator-only sampling, ExitRight bond ≠ full insurance, per-chain allocation ≠ global 100% coverage, and USDG proofs verify only on their home chain (leaves bind the local token address) — documented in README.
 
 Testnet operating rule: any ExitRight demo claim must be settled in the same session. A claim left unsettled past the 72h payout window is slashed and permanently flips mTSLA to EXIT_DEFAULT (reason 8). `npm run status:rh` lists any unsettled claim with its deadline.

@@ -8,6 +8,9 @@
  * has something to show too.
  *
  * With REDEPLOY=1 the deployer's supply and collateral are first pulled out of the old vault.
+ * VAULT_LOAN_TOKEN=new deploys a MockUSDG owned by the deployer and mints the seed, for chains where
+ * the deployment's USDG isn't ours to mint; VAULT_LOAN_TOKEN=<address> uses that token. Either is
+ * stored as contracts.VaultLoanToken; by default the vault lends VaultLoanToken, else USDG.
  *
  *   npx hardhat run scripts/deploy-vault.ts --network robinhoodTestnet
  */
@@ -53,19 +56,33 @@ async function main() {
   const [deployer] = await ethers.getSigners();
 
   let vaultAddr: string = c.GuardedLendingVault;
+  let loanToken: string = c.VaultLoanToken || c.USDG;
   if (vaultAddr && process.env.REDEPLOY !== "1") {
     console.log(`GuardedLendingVault already at ${vaultAddr} (REDEPLOY=1 to replace)`);
+    loanToken = await (await ethers.getContractAt("GuardedLendingVault", vaultAddr)).loanToken();
   } else {
     if (vaultAddr) await drainOldVault(vaultAddr, deployer.address);
+    const wanted = process.env.VAULT_LOAN_TOKEN;
+    if (wanted === "new") {
+      const mock = await (await ethers.getContractFactory("MockUSDG")).deploy();
+      await mock.waitForDeployment();
+      loanToken = await mock.getAddress();
+      await (await mock.mint(deployer.address, SEED + 1_000_000n)).wait();
+      c.VaultLoanToken = loanToken;
+      console.log(`Vault loan token: MockUSDG ${loanToken} (deployer-owned, minted ${Number(SEED + 1_000_000n) / 1e6})`);
+    } else if (wanted) {
+      loanToken = ethers.getAddress(wanted);
+      c.VaultLoanToken = loanToken;
+    }
     const Vault = await ethers.getContractFactory("GuardedLendingVault");
-    const vault = await Vault.deploy(c.SolvencyOracle, dep.custodianId, c.MockStockToken, c.USDG, PRICE, LTV_BPS);
+    const vault = await Vault.deploy(c.SolvencyOracle, dep.custodianId, c.MockStockToken, loanToken, PRICE, LTV_BPS);
     await vault.waitForDeployment();
     vaultAddr = await vault.getAddress();
     console.log(`GuardedLendingVault: ${vaultAddr}`);
   }
   const vault = await ethers.getContractAt("GuardedLendingVault", vaultAddr);
   const stock = await ethers.getContractAt("MockStockToken", c.MockStockToken);
-  const usdg = await ethers.getContractAt("MockUSDG", c.USDG);
+  const usdg = await ethers.getContractAt("MockUSDG", loanToken);
 
   if ((await vault.collateralOf(deployer.address)) < COLLATERAL) {
     const held = await stock.balanceOf(deployer.address);

@@ -18,6 +18,8 @@
     "deploy": "hardhat run scripts/deploy.ts",
     "deploy:rh": "hardhat run scripts/deploy.ts --network robinhoodTestnet",
     "deploy:arb": "hardhat run scripts/deploy.ts --network arbitrumSepolia",
+    "disputes:redeploy:rh": "hardhat run scripts/redeploy-disputes.ts --network robinhoodTestnet",
+    "disputes:redeploy:arb": "hardhat run scripts/redeploy-disputes.ts --network arbitrumSepolia",
     "vault:deploy:rh": "hardhat run scripts/deploy-vault.ts --network robinhoodTestnet",
     "vault:deploy:arb": "hardhat run scripts/deploy-vault.ts --network arbitrumSepolia",
     "morpho:deploy:rh": "hardhat run scripts/deploy-morpho-oracle.ts --network robinhoodTestnet",

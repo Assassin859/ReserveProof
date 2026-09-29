@@ -17,17 +17,17 @@
     "AssetConfig": "0xF2204f0ca44E289d27Ea0422E6Ab7665fa316892",
     "LiabilityLedger": "0x1F6fAfc59FFe60f2d8d779d202be17d8b36b3537",
     "ReserveSampler": "0x88ecb274A5Eb6Dc3310c532b8c94795e65605616",
-    "DisputeModule": "0xA755d7b51Ee9E452dB7de6D87Efca2aCC0834f41",
-    "SolvencyOracle": "0xFeD7650622256e3c4CbC8642D0d4F230224D8E2f",
+    "DisputeModule": "0x7EBe151E45ff79DAb358cb5363F363385b12116b",
+    "SolvencyOracle": "0x7eb23Aa9D81a6a08af61FF1A5Ac8FBDD312686A7",
     "ExitRight": "0x272644a119088A096F7fDBFE76da71fF01C0EfB6",
-    "GatedPayout": "0xed67EC461D64e42ed1472d3d74cbb32ee143a430",
-    "GatedLendWithdraw": "0xE4B526f9b8216852FD186E6a633446BD1834D7C7",
+    "GatedPayout": "0x075AD5416F2b10B228a8Ca9D8518b4cf5152B176",
+    "GatedLendWithdraw": "0x8e50C6F4009a7EacC08277B55168aaF08D068023",
     "MockStockToken": "0x66069A805d8c96a710B800066FdcEAfdfBcaA248",
     "USDG": "0x7E955252E15c84f5768B83c41a71F9eba181802F",
-    "GuardedLendingVault": "0x6c7C5100C812e1c95B2D745a33004Ef85E4573a9",
+    "GuardedLendingVault": "0xBf5E41bEAE435E7D19F8dD4E6928e2c2a198b8eF",
     "TSLA": "0xC9f9c86933092BbbfFF3CCb4b105A4A94bf3Bd4E",
     "FixedPriceMorphoOracle": "0xb50515952ABF6332cdd58F07292357980A1B391B",
-    "SolvencyGatedMorphoOracle": "0x36a84f430973d2AE6B2Cc4710003204027c203B8"
+    "SolvencyGatedMorphoOracle": "0x55bcE99CF827F940D8138104e6dF0004630A847e"
   },
   "vault": {
     "demoBorrower": "0x4F38186806e8e3c96Cf39ae13F3231639DaD15Ba",
@@ -41,5 +41,15 @@
     "maxFreeze": 259200,
     "maxPokeGap": 21600,
     "postCapBps": 5000
+  },
+  "previous": {
+    "replacedAt": "2026-09-29T12:35:48.621Z",
+    "reason": "SETTLE-1: bounded, resumable equivocation settlement",
+    "DisputeModule": "0xA755d7b51Ee9E452dB7de6D87Efca2aCC0834f41",
+    "SolvencyOracle": "0xFeD7650622256e3c4CbC8642D0d4F230224D8E2f",
+    "GatedPayout": "0xed67EC461D64e42ed1472d3d74cbb32ee143a430",
+    "GatedLendWithdraw": "0xE4B526f9b8216852FD186E6a633446BD1834D7C7",
+    "GuardedLendingVault": "0x6c7C5100C812e1c95B2D745a33004Ef85E4573a9",
+    "SolvencyGatedMorphoOracle": "0x36a84f430973d2AE6B2Cc4710003204027c203B8"
   }
 }

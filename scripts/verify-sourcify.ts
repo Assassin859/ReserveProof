@@ -23,6 +23,7 @@ const SOURCES: Record<string, string> = {
   GatedPayout: "src/composers/GatedPayout.sol",
   GatedLendWithdraw: "src/composers/GatedLendWithdraw.sol",
   GuardedLendingVault: "src/examples/GuardedLendingVault.sol",
+  VaultLoanToken: "src/mocks/MockUSDG.sol:MockUSDG",
   FixedPriceMorphoOracle: "src/integrations/FixedPriceMorphoOracle.sol",
   SolvencyGatedMorphoOracle: "src/integrations/SolvencyGatedMorphoOracle.sol",
 };
@@ -37,12 +38,13 @@ const buildInfos = fs
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
-  for (const [name, source] of Object.entries(SOURCES)) {
+  for (const [name, spec] of Object.entries(SOURCES)) {
     if (only.length && !only.includes(name)) continue;
     const address = dep.contracts[name];
     if (!address) continue;
-    const bi = buildInfos.find((b) => b.output?.contracts?.[source]?.[name]);
-    if (!bi) throw new Error(`No build-info for ${source}:${name}`);
+    const [source, contract = name] = spec.split(":");
+    const bi = buildInfos.find((b) => b.output?.contracts?.[source]?.[contract]);
+    if (!bi) throw new Error(`No build-info for ${source}:${contract}`);
 
     const res = await fetch(`${SOURCIFY}/v2/verify/${dep.chainId}/${address}`, {
       method: "POST",
@@ -50,7 +52,7 @@ async function main() {
       body: JSON.stringify({
         stdJsonInput: bi.input,
         compilerVersion: bi.solcLongVersion,
-        contractIdentifier: `${source}:${name}`,
+        contractIdentifier: `${source}:${contract}`,
       }),
     });
     const body = await res.json();

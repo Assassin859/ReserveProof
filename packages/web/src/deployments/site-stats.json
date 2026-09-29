@@ -1,9 +1,9 @@
 {
   "tests": {
-    "total": 145,
-    "hardhat": 50,
+    "total": 150,
+    "hardhat": 51,
     "foundryFuzz": 61,
-    "foundryUnit": 20,
+    "foundryUnit": 24,
     "invariants": 14
   },
   "market": {

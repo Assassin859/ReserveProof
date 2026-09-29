@@ -23,6 +23,8 @@ contract DisputeModule is EIP712 {
     uint8 public constant KIND_NONE = 0;
     uint8 public constant KIND_CLEARABLE = 1;
     uint8 public constant KIND_EQUIVOCATION = 2;
+    /// @dev Queue entries settled inline by openEquivocationDispute; the rest via settleChallengesAfterEquivocation.
+    uint256 public constant SETTLE_BATCH = 64;
 
     CustodianRegistry public immutable registry;
     LiabilityLedger public immutable ledger;
@@ -88,6 +90,7 @@ contract DisputeModule is EIP712 {
     event ChallengeAnswered(bytes32 indexed custodianId, address indexed asset, address user);
     event ChallengeExpired(bytes32 indexed custodianId, address indexed asset, address user);
     event ChallengeBondWithdrawn(address indexed user, uint256 amount);
+    event ChallengesSettled(bytes32 indexed custodianId, address indexed asset, uint256 fromIndex, uint256 toIndex);
 
     error NotOperator();
     error NotUser();
@@ -107,6 +110,7 @@ contract DisputeModule is EIP712 {
     error ChallengeExpiredErr();
     error ZeroBond();
     error NoRefund();
+    error NotPermanent();
 
     constructor(
         CustodianRegistry registry_,
@@ -295,8 +299,18 @@ contract DisputeModule is EIP712 {
 
         usedEvidence[otherDigest] = true;
         equivocationPermanent[custodianId][asset] = true;
-        _settleAllOpenChallenges(custodianId, asset);
+        _settleOpenChallenges(custodianId, asset, SETTLE_BATCH);
         emit DisputeOpened(custodianId, asset, address(0), epochId);
+    }
+
+    /// @notice Permissionless: refunds the bonds of challenges still queued after an equivocation proof,
+    ///         scanning at most `maxCount` queue entries per call so no queue length can exceed the gas limit.
+    function settleChallengesAfterEquivocation(bytes32 custodianId, address asset, uint256 maxCount)
+        external
+        returns (uint256 settled, bool done)
+    {
+        if (!equivocationPermanent[custodianId][asset]) revert NotPermanent();
+        return _settleOpenChallenges(custodianId, asset, maxCount);
     }
 
     /// @notice Only the subject user may open. Pulls challengeBond; refund credited on close (pull withdraw).
@@ -447,10 +461,15 @@ contract DisputeModule is EIP712 {
         _advanceHead(custodianId, asset);
     }
 
-    function _settleAllOpenChallenges(bytes32 custodianId, address asset) internal {
+    function _settleOpenChallenges(bytes32 custodianId, address asset, uint256 maxCount)
+        internal
+        returns (uint256 settled, bool done)
+    {
         QueueEntry[] storage q = _challengeQueue[custodianId][asset];
-        uint256 head = challengeHead[custodianId][asset];
-        for (uint256 i = head; i < q.length; i++) {
+        uint256 from = challengeHead[custodianId][asset];
+        uint256 end = q.length;
+        if (maxCount < end - from) end = from + maxCount;
+        for (uint256 i = from; i < end; i++) {
             address user = q[i].user;
             Challenge storage c = challenges[custodianId][asset][user];
             if (_isLive(c, q[i])) {
@@ -459,9 +478,12 @@ contract DisputeModule is EIP712 {
                     c.bonded = false;
                     challengeRefunds[user] += challengeBond;
                 }
+                settled++;
             }
         }
-        challengeHead[custodianId][asset] = q.length;
+        challengeHead[custodianId][asset] = end;
+        done = end == q.length;
+        emit ChallengesSettled(custodianId, asset, from, end);
     }
 
     function _advanceHead(bytes32 custodianId, address asset) internal {

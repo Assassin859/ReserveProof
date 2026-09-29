@@ -32,7 +32,7 @@ contract DisputeHandler is RPBase {
         address u = users[i];
         uint64 epoch = uint64(bound(epochSeed, 1, latestEpoch));
         uint256 amount = honest ? amounts[i] : amounts[i] + bound(skew, 1, 1e12);
-        if (_challengeOpen(u)) return;
+        if (_challengeOpen(u) || disputes.equivocationPermanent(CID, address(asset))) return;
 
         bytes memory sig = _statementSig(epoch, u, amount);
         bondToken.mint(u, BOND);
@@ -89,6 +89,30 @@ contract DisputeHandler is RPBase {
         vm.prank(u);
         disputes.withdrawChallengeBond();
         calls["withdraw"]++;
+    }
+
+    /// @dev Terminal for the market, so it only fires on 1 seed in 8 to leave most runs exercising
+    ///      the clearable paths first.
+    function equivocate(uint256 seed) external useClock {
+        if (seed % 8 != 0 || disputes.equivocationPermanent(CID, address(asset))) return;
+        uint64 epoch = uint64(bound(seed >> 8, 1, latestEpoch));
+        (, uint256 total) = _root(epoch);
+        uint256[] memory allocs = new uint256[](1);
+        allocs[0] = total;
+        bytes32 allocCmt = keccak256(abi.encode(_chains(), allocs));
+        bytes32 otherRoot = keccak256(abi.encode("forked book", epoch));
+        bytes32 digest = ledger.commitmentDigest(CID, address(asset), epoch, otherRoot, total, allocCmt, LEAVES);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(OP_PK, digest);
+        disputes.openEquivocationDispute(
+            CID, address(asset), epoch, otherRoot, total, allocCmt, LEAVES, abi.encodePacked(r, s, v)
+        );
+        calls["equivocate"]++;
+    }
+
+    function settle(uint256 maxSeed) external useClock {
+        if (!disputes.equivocationPermanent(CID, address(asset))) return;
+        disputes.settleChallengesAfterEquivocation(CID, address(asset), bound(maxSeed, 0, 3));
+        calls["settle"]++;
     }
 
     function commitNext() external useClock {
@@ -155,7 +179,7 @@ contract DisputeInvariantsTest is Test {
         targetContract(address(h));
         // `challenge` is listed three times to weight it: with 8 equal selectors a 64-call run has no
         // successful challenge often enough (~2% of full sessions) to trip afterInvariant's guard.
-        bytes4[] memory actions = new bytes4[](10);
+        bytes4[] memory actions = new bytes4[](12);
         actions[0] = DisputeHandler.challenge.selector;
         actions[1] = DisputeHandler.answer.selector;
         actions[2] = DisputeHandler.expire.selector;
@@ -166,6 +190,8 @@ contract DisputeInvariantsTest is Test {
         actions[7] = DisputeHandler.warp.selector;
         actions[8] = DisputeHandler.challenge.selector;
         actions[9] = DisputeHandler.challenge.selector;
+        actions[10] = DisputeHandler.equivocate.selector;
+        actions[11] = DisputeHandler.settle.selector;
         targetSelector(FuzzSelector({addr: address(h), selectors: actions}));
     }
 
@@ -200,7 +226,11 @@ contract DisputeInvariantsTest is Test {
             if (open) n++;
         }
         assertEq(d.openDisputeCount(CID, asset), n, "openDisputeCount drifted");
-        assertEq(d.isDisputed(CID, asset), n > 0, "isDisputed disagrees with open disputes");
+        assertEq(
+            d.isDisputed(CID, asset),
+            n > 0 || d.equivocationPermanent(CID, asset),
+            "isDisputed disagrees with open disputes"
+        );
     }
 
     /// @dev Every bond the module holds is either locked in an open challenge or owed as a refund.
@@ -255,6 +285,21 @@ contract DisputeHandlerSmokeTest is Test {
         h.clear(2);
         assertEq(h.calls("clear"), 1);
         assertEq(h.disputes().openDisputeCount(CID, h.assetAddr()), 1, "inflated dispute stays open");
+    }
+
+    function test_equivocationSettlesAndRefunds() public {
+        h.challenge(0, 1, true, 0);
+        h.challenge(3, 1, false, 7);
+        h.equivocate(0);
+        assertEq(h.calls("equivocate"), 1);
+        DisputeModule d = h.disputes();
+        assertEq(d.openChallengeCount(CID, h.assetAddr()), 0, "inline batch settles a short queue");
+        h.settle(3);
+        assertEq(h.calls("settle"), 1);
+        h.withdrawBond(0);
+        h.withdrawBond(3);
+        assertEq(h.calls("withdraw"), 2);
+        assertEq(DisputeHandlerToken(h.bondTokenAddr()).balanceOf(address(d)), 0, "every bond returned");
     }
 }
 

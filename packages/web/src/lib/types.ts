@@ -19,6 +19,8 @@ export type Deployment = {
     GatedPayout?: `0x${string}`;
     GatedLendWithdraw?: `0x${string}`;
     GuardedLendingVault?: `0x${string}`;
+    /** Deployer-owned MockUSDG the vault lends when the chain's USDG isn't ours to mint. */
+    VaultLoanToken?: `0x${string}`;
     FixedPriceMorphoOracle?: `0x${string}`;
     SolvencyGatedMorphoOracle?: `0x${string}`;
     /** Testnets only; the mainnet deployment guards real tokens. */

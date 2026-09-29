@@ -35,11 +35,19 @@ async function main() {
     ["GatedPayout", c.GatedPayout, [c.SolvencyOracle, dep.custodianId, c.MockStockToken]],
     ["GatedLendWithdraw", c.GatedLendWithdraw, [c.SolvencyOracle, dep.custodianId, c.MockStockToken]],
   ];
+  if (c.VaultLoanToken) targets.push(["VaultLoanToken", c.VaultLoanToken, []]);
   if (c.GuardedLendingVault && dep.vault) {
     targets.push([
       "GuardedLendingVault",
       c.GuardedLendingVault,
-      [c.SolvencyOracle, dep.custodianId, c.MockStockToken, c.USDG, dep.vault.collateralPrice, dep.vault.ltvBps],
+      [
+        c.SolvencyOracle,
+        dep.custodianId,
+        c.MockStockToken,
+        c.VaultLoanToken || c.USDG,
+        dep.vault.collateralPrice,
+        dep.vault.ltvBps,
+      ],
     ]);
   }
 
