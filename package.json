@@ -51,6 +51,7 @@
     "demo:setup": "ts-node scripts/demo-setup.ts",
     "demo:snapshot": "hardhat run scripts/demo-snapshot.ts --network localhost",
     "demo:reset": "hardhat run scripts/demo-reset.ts --network localhost",
+    "demo:morpho-fork": "hardhat run scripts/morpho-fork-demo.ts",
     "ops:publish": "hardhat run scripts/publish-epoch.ts --network localhost",
     "ops:sample": "hardhat run scripts/record-samples.ts --network localhost"
   },

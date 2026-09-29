@@ -13,6 +13,8 @@ export async function deployFixture(opts?: {
   allocationChains?: number[];
   assetId?: string;
   deploymentSalt?: string;
+  /** Gate an existing token (e.g. on a fork) instead of deploying MockStockToken; nothing is minted. */
+  stockAddress?: string;
 }) {
   const maxOracleAge = opts?.maxOracleAge ?? 7 * 24 * 3600;
   const minSamples = opts?.minSamples ?? 2;
@@ -73,7 +75,9 @@ export async function deployFixture(opts?: {
   await oracle.setExitRight(await exitRight.getAddress());
 
   const Stock = await ethers.getContractFactory("MockStockToken");
-  const stock = await Stock.deploy("Mock TSLA", "mTSLA");
+  const stock = opts?.stockAddress
+    ? Stock.attach(opts.stockAddress)
+    : await Stock.deploy("Mock TSLA", "mTSLA");
 
   const custodianId = ethers.id("kopi");
   await registry.registerCustodian(custodianId, operator.address, 3600);
@@ -106,7 +110,7 @@ export async function deployFixture(opts?: {
     allocationChains
   );
 
-  await stock.mint(wallet1.address, ethers.parseEther("1000"));
+  if (!opts?.stockAddress) await stock.mint(wallet1.address, ethers.parseEther("1000"));
   await usdg.mint(operator.address, 1_000_000n * 1_000_000n);
   // Challenge bonds for common test users
   for (const u of [userA, userB, userC, userD]) {

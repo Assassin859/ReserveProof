@@ -131,6 +131,50 @@ unmodified Morpho Blue v1.0.0 core, including:
 - a pre-started clock;
 - liquidation at the discounted price after the cap.
 
+### Re-run the Morpho freeze yourself
+
+One command, no keys, no gas, about 45 seconds (after `npm ci`):
+
+```bash
+npm run demo:morpho-fork
+```
+
+It forks Robinhood Chain mainnet in memory (nothing is broadcast) and deploys ReserveProof gating the
+**real TSLA token**. It wraps the **real TSLA/USDG Morpho oracle** in `SolvencyGatedMorphoOracle`, then
+opens a market on the **real Morpho Blue** (`0x9D53…1010`, real adaptive IRM, 77% LLTV). Then it drains the
+reserve wallet and prints PASS/FAIL for every check. Only two things are simulated: token balances,
+which are set in storage, and, from step 4 on, the feed transmitters. The real oracle rejects feed answers
+older than 26 hours and a fork receives no new rounds, so before warping 72 hours the feed's latest real
+answer is replayed with fresh timestamps. The script exits non-zero if any check fails.
+
+```text
+Step 2: custodian drains 990 of 1000 TSLA from the reserve wallet
+  PASS  status reason is LIVE_SHORT (6)  (LIVE_SHORT)
+  PASS  wrapper.price() reverts  (Insolvent(6))
+  PASS  Morpho borrow(1 USDG) reverts  (Insolvent(6))
+  PASS  Morpho indebted withdrawCollateral reverts  (Insolvent(6))
+  PASS  Morpho liquidate reverts (no liquidation at a fake price)  (Insolvent(6))
+Step 3: exits that need no price keep working
+  PASS  borrower repay(100 USDG)
+  PASS  borrower supplyCollateral(1 TSLA)
+  PASS  lender withdraw(10,000 USDG)
+Step 4: a keeper pokes every 5h through the 72h freeze
+  PASS  price() still reverts at 71h (16 pokes)  (Insolvent(6))
+  PASS  price() at 72h == 50% of the real oracle price  (179.6725 USDG/TSLA)
+Step 5: liquidation clears at the discounted price
+  PASS  liquidator seizes 1 TSLA  (received 1.0 TSLA for 167.275099 USDG)
+Step 6: custodian restores reserves; a healthy poke clears the clock
+  PASS  healthy poke emits FreezeCleared
+  PASS  price() back to the full real oracle price  (359.345 USDG/TSLA)
+  PASS  borrow(1 USDG) works again
+
+ALL PASS: 20 checks on a Robinhood Chain mainnet fork against the real Morpho Blue
+```
+
+`FORK_RPC` and `FORK_BLOCK` override the fork source. The public RPC keeps only about 5,000 blocks of
+state, so the default is the latest block. Offline, `forge test` covers the same paths against Morpho
+Blue built from source.
+
 | Network | SolvencyGatedMorphoOracle (mTSLA, base 250 USDG) |
 |---|---|
 | Robinhood testnet | [`0x55bc…847e`](https://explorer.testnet.chain.robinhood.com/address/0x55bcE99CF827F940D8138104e6dF0004630A847e#code) |
@@ -161,6 +205,9 @@ forge install foundry-rs/forge-std --no-git
 forge install morpho-org/morpho-blue@v1.0.0 --no-git
 forge test
 npm run test:count
+
+# Drain a custodian on a Robinhood Chain mainnet fork and watch the real Morpho Blue freeze (~45s)
+npm run demo:morpho-fork
 ```
 
 ## Kopi Wallet UI

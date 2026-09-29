@@ -27,6 +27,8 @@ const config: HardhatUserConfig = {
   networks: {
     hardhat: {
       chainId: 31337,
+      // Lets `npm run demo:morpho-fork` execute on an in-memory Robinhood mainnet fork.
+      chains: { 4663: { hardforkHistory: { cancun: 0 } } },
     },
     localhost: {
       url: "http://127.0.0.1:8545",

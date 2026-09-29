@@ -59,6 +59,19 @@ unmodified Morpho Blue core, including:
 - a pre-started clock;
 - liquidation at the discounted price after the cap.
 
+**Re-run it yourself on mainnet state:** `npm run demo:morpho-fork` forks Robinhood Chain mainnet in memory
+(no keys, nothing broadcast). It gates the real TSLA token, wraps the real TSLA/USDG oracle and opens a
+market on the real Morpho Blue. Then it drains the reserves and prints 20 PASS/FAIL checks:
+- borrow works while healthy;
+- `price()`, borrow, indebted withdraw and liquidate revert `Insolvent(6)`;
+- repay, supplyCollateral and lender withdraw still work;
+- the price is still frozen at 71 hours and 50% at 72 hours;
+- the liquidation clears;
+- after the reserves are restored, one poke brings back full price and borrowing.
+
+It takes about 45 seconds. Details, and what is simulated (balances, and the feed transmitters during the 72h warp), are in the
+[README](../README.md#re-run-the-morpho-freeze-yourself).
+
 ## By the numbers (the build)
 
 | | |
