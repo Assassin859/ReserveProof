@@ -418,6 +418,9 @@ export function RiskView() {
           <Link className="ghost" href="/radar">
             Mainnet radar
           </Link>
+          <Link className="ghost" href="/status">
+            Status
+          </Link>
           <a className="ghost" href="/api/risk?network=robinhoodTestnet" target="_blank" rel="noreferrer">
             JSON feed
           </a>
@@ -468,7 +471,7 @@ export function RiskView() {
 
       <footer className="foot">
         <span>
-          <Link href="/">Live demo</Link> · <Link href="/radar">Mainnet radar</Link> ·{" "}
+          <Link href="/">Live demo</Link> · <Link href="/radar">Mainnet radar</Link> · <Link href="/status">Status</Link> ·{" "}
           <a href={GITHUB_URL} target="_blank" rel="noreferrer">
             GitHub
           </a>{" "}

@@ -1381,7 +1381,11 @@ export function KopiApp() {
             Submission
           </a>{" "}
           · <Link href="/risk">Curator risk</Link> · <Link href="/radar">Mainnet radar</Link> ·{" "}
-          <Link href="/compare">How we differ</Link> · MIT licensed
+          <Link href="/compare">How we differ</Link> · <Link href="/status">Status</Link> ·{" "}
+          <a href={`${GITHUB_URL}/blob/master/docs/FOUNDER-HOUSE.md`} target="_blank" rel="noreferrer">
+            Pilot / GTM
+          </a>{" "}
+          · MIT licensed
         </span>
         <span>
           {net.label}

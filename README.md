@@ -50,7 +50,7 @@ live mainnet market, marked would gate / wouldn't / copycat:
 
 See [docs/technical-spec.md](docs/technical-spec.md) for the full design.
 
-Hackathon packet: [docs/SUBMISSION.md](docs/SUBMISSION.md) · [docs/VERIFY.md](docs/VERIFY.md)
+Hackathon packet: [docs/SUBMISSION.md](docs/SUBMISSION.md) · [docs/VERIFY.md](docs/VERIFY.md) · [docs/FOUNDER-HOUSE.md](docs/FOUNDER-HOUSE.md) (go-to-market)
 
 ## How it works
 
@@ -394,6 +394,10 @@ a fresh epoch fixes, pokes the Morpho wrapper, and fails the run on anything els
 running freeze clock, an overdue challenge, a slashable exit claim. Set an `ALERT_WEBHOOK_URL` secret
 (Discord or Slack) to be pinged as well. It shares a per-network concurrency group with Ops epoch, so
 the two never send transactions from the deployer key at once.
+
+[reserveproof-teal.vercel.app/status](https://reserveproof-teal.vercel.app/status) shows it all on one
+page: every proof, the Morpho wrapper, the gated consumers, publisher gas, and the last 48 hourly
+watchtower slots (GitHub cron runs late, so empty slots are shown rather than hidden).
 
 **Settle every demo claim in the same session.** A claim left unsettled past its 72h payout window can
 be slashed by anyone, which permanently flips that asset to EXIT_DEFAULT. `exitright:demo` opens and

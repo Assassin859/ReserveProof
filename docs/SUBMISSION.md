@@ -161,6 +161,8 @@ The contracts, CLI and verifier stay MIT-licensed. Revenue comes from running th
 
 The wedge is the free integrator side: every protocol that gates on `isSolvent` gives custodians a reason to publish.
 
+**Go-to-market:** [docs/FOUNDER-HOUSE.md](FOUNDER-HOUSE.md) names the design-partner targets (the Morpho curators running USDG vaults on Robinhood Chain, from [docs/gtm-targets.json](gtm-targets.json)), the 90-day pilot offer, pricing hypotheses, the 30/60/90-day plan and a 10-slide outline.
+
 ## Grant milestone plan
 
 | # | Milestone | Deliverables | Done when |
@@ -244,7 +246,7 @@ The registry, ledger, sampler, ExitRight and mTSLA share addresses on both chain
 | Robinhood — ExitRight `openClaim` #0 (demo user, 100 mTSLA) | [0xb1dc…b297](https://explorer.testnet.chain.robinhood.com/tx/0xb1dc7b713cbd07fdaaaaf2fd5599cb706cee9fd2c7e1bb3568702810ef65b297) |
 | Robinhood — ExitRight `settle` #0 (operator) | [0x8fec…e2e9](https://explorer.testnet.chain.robinhood.com/tx/0x8fec3e59a1824b8d09da32529f27454a2c56e1344ecc5d56c18708ce8679e2e9) |
 | ExitRight record | [`deployments/robinhoodTestnet.exitright.json`](../deployments/robinhoodTestnet.exitright.json) |
-| Scheduled re-publishing | [Ops epoch workflow](https://github.com/Assassin859/ReserveProof/actions/workflows/ops-epoch.yml) (every 3 days); [first run](https://github.com/Assassin859/ReserveProof/actions/runs/36323953179) published epoch 2 on both chains. The hourly [watchtower](https://github.com/Assassin859/ReserveProof/actions/workflows/watchtower.yml) re-publishes if a scheduled run is missed, pokes the Morpho wrapper, and fails loudly on anything it can't heal |
+| Scheduled re-publishing | [Ops epoch workflow](https://github.com/Assassin859/ReserveProof/actions/workflows/ops-epoch.yml) (every 3 days); [first run](https://github.com/Assassin859/ReserveProof/actions/runs/36323953179) published epoch 2 on both chains. The hourly [watchtower](https://github.com/Assassin859/ReserveProof/actions/workflows/watchtower.yml) re-publishes if a scheduled run is missed, pokes the Morpho wrapper, and fails loudly on anything it can't heal. Public status page: [/status](https://reserveproof-teal.vercel.app/status) |
 | Live app | [reserveproof-teal.vercel.app](https://reserveproof-teal.vercel.app) |
 | Demo video | _TODO_ |
 | Repo | https://github.com/Assassin859/ReserveProof |

@@ -344,7 +344,7 @@ export function RadarView() {
       <footer className="foot">
         <span>
           <Link href="/">Live demo</Link> · <Link href="/risk">Curator risk</Link> · <Link href="/compare">How we differ</Link>{" "}
-          ·{" "}
+          · <Link href="/status">Status</Link> ·{" "}
           <a href={GITHUB_URL} target="_blank" rel="noreferrer">
             GitHub
           </a>{" "}

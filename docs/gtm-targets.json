@@ -1,0 +1,493 @@
+{
+  "fetchedAt": "2026-09-29T15:37:16.414Z",
+  "note": "Targets, not relationships: public on-chain and API data only. No one listed here has been contacted or has endorsed ReserveProof.",
+  "sources": {
+    "morphoApi": "https://api.morpho.org/graphql",
+    "radar": "https://reserveproof-teal.vercel.app/api/radar"
+  },
+  "radarBlock": 75768198,
+  "radarBlockTime": "2026-09-29T15:35:46.000Z",
+  "summary": {
+    "marketsTotal": 292,
+    "wouldGateMarkets": 179,
+    "wouldGateUsdgSupplied": 706511.52,
+    "wouldGateUsdgBorrowed": 682109.57,
+    "copycatMarkets": 6,
+    "issuerTokens": 50,
+    "vaultV2sOnChain": 47,
+    "usdgVaults": 32,
+    "usdgVaultsOver1k": 5,
+    "usdgVaultTvlUsd": 507432974,
+    "usdgLentUsd": 508053442,
+    "topWouldGateMarketsWithAVault": 0
+  },
+  "curators": [
+    {
+      "name": "Steakhouse USDG",
+      "symbol": "steakUSDG",
+      "address": "0xBeEff033F34C046626B8D0A041844C5d1A5409dd",
+      "curator": "0x9023FBD6A08C666491A2d1648737E400cF42D2Fb",
+      "tvlUsd": 506060096
+    },
+    {
+      "name": "NetNet Credit",
+      "symbol": "nnUSDG",
+      "address": "0x99347d5F70D3838763f6Bddcf80304C8aa953B57",
+      "curator": "0x3Bb7A23316f82C0e984fA2E784846d8928a35f42",
+      "tvlUsd": 1167251
+    },
+    {
+      "name": "Grove x Steakhouse USDG",
+      "symbol": "groveUSDG",
+      "address": "0xBEEff039907422219Fb367e525954DDC092854d9",
+      "curator": "0x622E19d6903BD4507cfc70b31d5B99535114C0FC",
+      "tvlUsd": 100015
+    },
+    {
+      "name": "Purinta USDG",
+      "symbol": "PurintaUSDG",
+      "address": "0x37788ff0c1d4e45A7FE06BC7e71e0cc00121d0A8",
+      "curator": "0x370EC5d1809B27F1fB18e002cf79837c46F5134c",
+      "tvlUsd": 53722
+    },
+    {
+      "name": "MEV Capital USDG",
+      "symbol": "MEV-USDG",
+      "address": "0xaED8B69FBd85aB131fAbC9312D9E0BD7A08fd5Be",
+      "curator": "0x1B6EaFf09bE2c263B9848708DD08809C44AF09EE",
+      "tvlUsd": 51033
+    }
+  ],
+  "usdgLendingTop": [
+    {
+      "id": "0xc845da65a020ddca5f132efa8fea79676d8edfdea504226a4c01e7a9e34cddd6",
+      "collateral": "USDe",
+      "collateralAddress": "0x5d3a1Ff2b6BAb83b63cd9AD0787074081a52ef34",
+      "supplyUsd": 334399935,
+      "borrowUsd": 301623785,
+      "utilization": 0.9
+    },
+    {
+      "id": "0x919a9b6b94dae7c86620eaf7a08e597aae8a4c3a9e9c7671771fbaf62b6b61c7",
+      "collateral": "syrupUSDG",
+      "collateralAddress": "0x40858070814a57FdF33a613ae84fE0a8b4a874f7",
+      "supplyUsd": 126530740,
+      "borrowUsd": 111943605,
+      "utilization": 0.88
+    },
+    {
+      "id": "0x1efd13a2d1dc66a2466e7c25820537028e604791f00454d9c686fdfbf70f404d",
+      "collateral": "mGLO",
+      "collateralAddress": "0xFEd493F38c1aAcb4EA4e6A11F8b9287849EE0096",
+      "supplyUsd": 32215506,
+      "borrowUsd": 29136755,
+      "utilization": 0.9
+    },
+    {
+      "id": "0x0309c02dabf0be02682af1a2bde9a457f4df0f0b6bc889cde3f948e5315e4114",
+      "collateral": "spUSDG",
+      "collateralAddress": "0xde770c84FE66E063336b31737cFE9790f18c4087",
+      "supplyUsd": 13175333,
+      "borrowUsd": 11871167,
+      "utilization": 0.9
+    },
+    {
+      "id": "0xaa586d26a6fe62d9c0f0948fede6e2130500ac7a655587447e2d4a37e6330589",
+      "collateral": "wsNET",
+      "collateralAddress": "0x63C12667638f2Ae6fC6ae09B43D98Ec84a8586eA",
+      "supplyUsd": 851129,
+      "borrowUsd": 744612,
+      "utilization": 0.87
+    },
+    {
+      "id": "0xdeb4782d012d5fd3b24962538c2f6559049d70bda4dabd2e4212dacb96c28d45",
+      "collateral": "AAPL",
+      "collateralAddress": "0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9",
+      "supplyUsd": 197123,
+      "borrowUsd": 197098,
+      "utilization": 1
+    }
+  ],
+  "topWouldGateMarkets": [
+    {
+      "id": "0xdeb4782d012d5fd3b24962538c2f6559049d70bda4dabd2e4212dacb96c28d45",
+      "collateral": "AAPL",
+      "collateralAddress": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+      "loan": "USDG",
+      "lltv": 0.625,
+      "supplyUsdg": 197079.71,
+      "borrowUsdg": 197054.71,
+      "oracle": "0xD625d488D552775D2867194C618B945E5dDfE097",
+      "oracleType": "Unknown",
+      "warnings": [],
+      "utilization": 1,
+      "supplyingVaults": []
+    },
+    {
+      "id": "0x8b16891f032a93b771347c9cb470a780e6699dd701553d3402aa3cdba6189c3e",
+      "collateral": "NVDA",
+      "collateralAddress": "0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec",
+      "loan": "USDG",
+      "lltv": 0.625,
+      "supplyUsdg": 174685.52,
+      "borrowUsdg": 174685.52,
+      "oracle": "0xED29D310cfa91778A5850538DA28ed42234Cb78c",
+      "oracleType": "Unknown",
+      "warnings": [],
+      "utilization": 1,
+      "supplyingVaults": []
+    },
+    {
+      "id": "0x9b4b47cdf7e295341c6c6cdfd3efb9805c4a5b3d580dba0c0c39d3a4232b297b",
+      "collateral": "SPCX",
+      "collateralAddress": "0x4a0e65a3eccec6dbe60ae065f2e7bb85fae35eea",
+      "loan": "USDG",
+      "lltv": 0.625,
+      "supplyUsdg": 166727.5,
+      "borrowUsdg": 166702.5,
+      "oracle": "0x872F9D8955B34e841227a92dE755cd63042Ab7A5",
+      "oracleType": "Unknown",
+      "warnings": [],
+      "utilization": 1,
+      "supplyingVaults": []
+    },
+    {
+      "id": "0x7fa81b10e5d21b2e4c571f862442bc11aff2ed14f02335868d0ff933fd40d0ba",
+      "collateral": "GOOGL",
+      "collateralAddress": "0x2e0847e8910a9732eb3fb1bb4b70a580adad4fe3",
+      "loan": "USDG",
+      "lltv": 0.625,
+      "supplyUsdg": 139026.95,
+      "borrowUsdg": 139001.95,
+      "oracle": "0x12Ec3474D1e321e0aAB065278B97FBC7eDa5F424",
+      "oracleType": "Unknown",
+      "warnings": [],
+      "utilization": 1,
+      "supplyingVaults": []
+    },
+    {
+      "id": "0x50bc39b5722fb5634c436d74c6787f3c125b879e7b73cf9e9ecc01bbb57b8e55",
+      "collateral": "SPY",
+      "collateralAddress": "0x117cc2133c37b721f49de2a7a74833232b3b4c0c",
+      "loan": "USDG",
+      "lltv": 0.625,
+      "supplyUsdg": 11228.91,
+      "borrowUsdg": 4342.69,
+      "oracle": "0xe8dAb19184f72b5a5a9d51A6C50A1b04b0669ce7",
+      "oracleType": "ChainlinkOracleV2",
+      "warnings": [],
+      "utilization": 0.39,
+      "supplyingVaults": []
+    },
+    {
+      "id": "0x508b47fb12dbb8747644d4436aae65489b5f2819936adefc8a591323f64a5b01",
+      "collateral": "COIN",
+      "collateralAddress": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+      "loan": "USDG",
+      "lltv": 0.625,
+      "supplyUsdg": 110,
+      "borrowUsdg": 68,
+      "oracle": "0x05dd0593082aEA1f5fBbE560D0a6a4D52451e980",
+      "oracleType": "ChainlinkOracleV2",
+      "warnings": [],
+      "utilization": 0.62,
+      "supplyingVaults": []
+    },
+    {
+      "id": "0x01baec96478004fc7b74c8dfe38abef8d716fea59ffd481b6ec74db915d3bc80",
+      "collateral": "MSTR",
+      "collateralAddress": "0xec262a75e413fafd0df80480274532c79d42da09",
+      "loan": "USDG",
+      "lltv": 0.625,
+      "supplyUsdg": 100,
+      "borrowUsdg": 66,
+      "oracle": "0x64FCE7f7526F6E4e38d5d69ffA2d7eE89462B4De",
+      "oracleType": "ChainlinkOracleV2",
+      "warnings": [],
+      "utilization": 0.66,
+      "supplyingVaults": []
+    },
+    {
+      "id": "0xf0959f62e748938cf260ca6fe7cb21a412e0a6643913460f4a6770c3f4b90af6",
+      "collateral": "CRCL",
+      "collateralAddress": "0xdf0992e440dd0be65bd8439b609d6d4366bf1cb5",
+      "loan": "USDG",
+      "lltv": 0.625,
+      "supplyUsdg": 100,
+      "borrowUsdg": 45,
+      "oracle": "0x5407188617476660Ff02833608C88C20394E52e1",
+      "oracleType": "ChainlinkOracleV2",
+      "warnings": [],
+      "utilization": 0.45,
+      "supplyingVaults": []
+    },
+    {
+      "id": "0xe6284cf12d0603aee18ff5ab412e262cf99f120e967579111d7a51f37f276f54",
+      "collateral": "TTWO",
+      "collateralAddress": "0x5e81213613b6b86eab4c6c50d718d34359459786",
+      "loan": "USDG",
+      "lltv": 0.385,
+      "supplyUsdg": 100,
+      "borrowUsdg": 40,
+      "oracle": "0x7d8D501dd8D7b0b4E8707dF134146A702A5cD5de",
+      "oracleType": "ChainlinkOracleV2",
+      "warnings": [],
+      "utilization": 0.4,
+      "supplyingVaults": []
+    },
+    {
+      "id": "0x66306c087add8907752320b309934abcc354d21626de8115c79df49d9c214edc",
+      "collateral": "NVDA",
+      "collateralAddress": "0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec",
+      "loan": "USDG",
+      "lltv": 0.625,
+      "supplyUsdg": 6578.77,
+      "borrowUsdg": 31.31,
+      "oracle": "0xC5b8A6C5fDF14f9744dB1C8595f49E42Ce23031a",
+      "oracleType": "ChainlinkOracleV2",
+      "warnings": [],
+      "utilization": 0,
+      "supplyingVaults": []
+    },
+    {
+      "id": "0xb5ba72c0d55c353fa37c0bea104eb117afb2f4934473bcb736d2218ae5686746",
+      "collateral": "PLTR",
+      "collateralAddress": "0x894e1ec2d74ffe5aef8dc8a9e84686accb964f2a",
+      "loan": "USDG",
+      "lltv": 0.625,
+      "supplyUsdg": 33.06,
+      "borrowUsdg": 30.05,
+      "oracle": "0x3b1905b76Fa4cFf867BA33C6222D227E29F99bcc",
+      "oracleType": "ChainlinkOracleV2",
+      "warnings": [],
+      "utilization": 0.91,
+      "supplyingVaults": []
+    },
+    {
+      "id": "0xf4dff250826a86627545e5c6594b3b249db3ad2ec5eed56c02833d2a67acf445",
+      "collateral": "TSLA",
+      "collateralAddress": "0x322f0929c4625ed5bad873c95208d54e1c003b2d",
+      "loan": "USDG",
+      "lltv": 0.77,
+      "supplyUsdg": 15.01,
+      "borrowUsdg": 11.89,
+      "oracle": "0x280855A5BF983bf005f19992C157007930B3de2A",
+      "oracleType": "Unknown",
+      "warnings": [],
+      "utilization": 0.79,
+      "supplyingVaults": []
+    },
+    {
+      "id": "0xda5584635e8b14ea18f674dbe4243365505910fefd8e3aa1ac9bfaac0eba74e8",
+      "collateral": "INTC",
+      "collateralAddress": "0xc72b96e0e48ecd4dc75e1e45396e26300bc39681",
+      "loan": "USDG",
+      "lltv": 0.625,
+      "supplyUsdg": 100.68,
+      "borrowUsdg": 5.4,
+      "oracle": "0x9395486F2F3e9a02929EA4f5587C2e7B05394EEe",
+      "oracleType": "ChainlinkOracleV2",
+      "warnings": [],
+      "utilization": 0.05,
+      "supplyingVaults": []
+    },
+    {
+      "id": "0x2e1859aa8f143b7220088f80562c6dfe0bf8e52b87d9cedf8da8805f231994ce",
+      "collateral": "MSFT",
+      "collateralAddress": "0xe93237c50d904957cf27e7b1133b510c669c2e74",
+      "loan": "USDG",
+      "lltv": 0.625,
+      "supplyUsdg": 29.66,
+      "borrowUsdg": 5.01,
+      "oracle": "0xcb9a035fe0e8f321e36286405fEBC70dE42DB34e",
+      "oracleType": "Unknown",
+      "warnings": [],
+      "utilization": 0.17,
+      "supplyingVaults": []
+    },
+    {
+      "id": "0x298e8ff9b31f22be90507bc61b55e66ab93e78b55a60593035e309ed93137cb8",
+      "collateral": "RDDT",
+      "collateralAddress": "0x05b37fb53a299a1b874a619e1c4c404d52c36f4c",
+      "loan": "USDG",
+      "lltv": 0.385,
+      "supplyUsdg": 110,
+      "borrowUsdg": 3.68,
+      "oracle": "0xb597B9DacFd878d4aF432c95a86Ba73E1B0c9e42",
+      "oracleType": "ChainlinkOracleV2",
+      "warnings": [],
+      "utilization": 0.03,
+      "supplyingVaults": []
+    }
+  ],
+  "topCollateral": [
+    {
+      "symbol": "AAPL",
+      "name": "Apple • Robinhood Token",
+      "address": "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9",
+      "markets": 15,
+      "borrowUsdg": 197055.7
+    },
+    {
+      "symbol": "NVDA",
+      "name": "NVIDIA • Robinhood Token",
+      "address": "0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec",
+      "markets": 16,
+      "borrowUsdg": 174717.78
+    },
+    {
+      "symbol": "SPCX",
+      "name": "Space Exploration Technologies Corp. Class A Common Stock • Robinhood Token",
+      "address": "0x4a0e65a3eccec6dbe60ae065f2e7bb85fae35eea",
+      "markets": 7,
+      "borrowUsdg": 166706.54
+    },
+    {
+      "symbol": "GOOGL",
+      "name": "Alphabet Class A • Robinhood Token",
+      "address": "0x2e0847e8910a9732eb3fb1bb4b70a580adad4fe3",
+      "markets": 12,
+      "borrowUsdg": 139002.86
+    },
+    {
+      "symbol": "SPY",
+      "name": "SPDR S&P 500 ETF Trust • Robinhood Token",
+      "address": "0x117cc2133c37b721f49de2a7a74833232b3b4c0c",
+      "markets": 12,
+      "borrowUsdg": 4342.69
+    },
+    {
+      "symbol": "COIN",
+      "name": "Coinbase • Robinhood Token",
+      "address": "0x6330d8c3178a418788df01a47479c0ce7ccf450b",
+      "markets": 2,
+      "borrowUsdg": 71.02
+    },
+    {
+      "symbol": "MSTR",
+      "name": "Strategy Inc. • Robinhood Token",
+      "address": "0xec262a75e413fafd0df80480274532c79d42da09",
+      "markets": 2,
+      "borrowUsdg": 66
+    },
+    {
+      "symbol": "CRCL",
+      "name": "Circle Internet Group • Robinhood Token",
+      "address": "0xdf0992e440dd0be65bd8439b609d6d4366bf1cb5",
+      "markets": 3,
+      "borrowUsdg": 45
+    },
+    {
+      "symbol": "TTWO",
+      "name": "Take-Two Interactive Software • Robinhood Token",
+      "address": "0x5e81213613b6b86eab4c6c50d718d34359459786",
+      "markets": 1,
+      "borrowUsdg": 40
+    },
+    {
+      "symbol": "PLTR",
+      "name": "Palantir Technologies • Robinhood Token",
+      "address": "0x894e1ec2d74ffe5aef8dc8a9e84686accb964f2a",
+      "markets": 2,
+      "borrowUsdg": 30.05
+    }
+  ],
+  "copycats": [
+    {
+      "id": "0x2c3b7d9de42cea70ce6672ec8ad97f49638fc620e7cc0989361080ed5b89f044",
+      "collateral": "WETH",
+      "collateralAddress": "0xd0f200ba2b8f3cacfb0df2c40a5e3869b18aa839",
+      "loan": "USDG",
+      "lltv": 0.915,
+      "supplyUsdg": 1000000000,
+      "borrowUsdg": 100000000,
+      "oracle": "0x2092530001FBAac6bA4988E3e30fD8B2a6951Bd5",
+      "oracleType": "Unknown",
+      "warnings": [
+        "COPYCAT"
+      ],
+      "loanAddress": "0x8c864e587d054cba3fc8d79054a700dc93988796",
+      "why": "Loan token USDG (0x8c86…8796) uses the USDG name but is not the Paxos contract. Lenders here are not lending the real asset."
+    },
+    {
+      "id": "0x16442dce6528b3b21e47bf0161d3ebd7cb64d2a9644b24a5828af8f1a1a1b661",
+      "collateral": "USDe",
+      "collateralAddress": "0x9b713609f4413d3349b267f0a3b244c3dda48dc7",
+      "loan": "USDG",
+      "lltv": 0.915,
+      "supplyUsdg": 52138.98,
+      "borrowUsdg": 47072.54,
+      "oracle": "0x976D5b2EF975Ff34B8CE499e4C5205d510A2e923",
+      "oracleType": "ChainlinkOracleV2",
+      "warnings": [
+        "COPYCAT"
+      ],
+      "loanAddress": "0x67240805b8477a514c3f9707f20fc05f34145505",
+      "why": "Loan token USDG (0x6724…5505) uses the USDG name but is not the Paxos contract. Lenders here are not lending the real asset."
+    },
+    {
+      "id": "0x8b5bc0a1e34399c96931c6b645c02bec416d1b3e4bbc09b7cde95594dea7426d",
+      "collateral": "PONS",
+      "collateralAddress": "0xed695f0f5c0790c5fe5681e628cbbcaf471f8f30",
+      "loan": "USDG",
+      "lltv": 0.625,
+      "supplyUsdg": 1417.32,
+      "borrowUsdg": 1338.59,
+      "oracle": "0x01BA9BD2dadf0a67A6029B49082905127b69A464",
+      "oracleType": "ChainlinkOracleV2",
+      "warnings": [
+        "COPYCAT"
+      ],
+      "loanAddress": "0x67240805b8477a514c3f9707f20fc05f34145505",
+      "why": "Loan token USDG (0x6724…5505) uses the USDG name but is not the Paxos contract. Lenders here are not lending the real asset."
+    },
+    {
+      "id": "0xf4f0a163746f88d5ab417326a20f1dc5d8cbbe4107c40dbbfaa8d834237b7be5",
+      "collateral": "CASHCAT",
+      "collateralAddress": "0x18b2de41ae2b9797048b9c95d565cd0de295b024",
+      "loan": "USDG",
+      "lltv": 0.625,
+      "supplyUsdg": 142.33,
+      "borrowUsdg": 142.33,
+      "oracle": "0xdb3064683f1D0832656C26755A94Cde68fFC89F7",
+      "oracleType": "ChainlinkOracleV2",
+      "warnings": [
+        "COPYCAT"
+      ],
+      "loanAddress": "0x67240805b8477a514c3f9707f20fc05f34145505",
+      "why": "Loan token USDG (0x6724…5505) uses the USDG name but is not the Paxos contract. Lenders here are not lending the real asset."
+    },
+    {
+      "id": "0xe58c0ffcc4911cb154a743907765bc0043febd771543640c461bc7392d1dbfb4",
+      "collateral": "AI",
+      "collateralAddress": "0x7eb41c1ac065d2ca4c024a449e954a43e52d7b9e",
+      "loan": "USDG",
+      "lltv": 0.625,
+      "supplyUsdg": 16.06,
+      "borrowUsdg": 15.06,
+      "oracle": "0x6dA7ff2AA48c61db4B72bfC172BbeDd5b5d2b208",
+      "oracleType": "ChainlinkOracleV2",
+      "warnings": [
+        "COPYCAT"
+      ],
+      "loanAddress": "0x67240805b8477a514c3f9707f20fc05f34145505",
+      "why": "Loan token USDG (0x6724…5505) uses the USDG name but is not the Paxos contract. Lenders here are not lending the real asset."
+    },
+    {
+      "id": "0xf9f800bd2d65b19b69914e34fc726f43de36d934b71c43e131983d08bdb0ffd3",
+      "collateral": "CASHCAT",
+      "collateralAddress": "0x67a4cfdb94fb09ca78a3e5cb0c437654ad112688",
+      "loan": "USDG",
+      "lltv": 0.385,
+      "supplyUsdg": 0,
+      "borrowUsdg": 0,
+      "oracle": "0xd21D46cd91D04b2456c367e063898Ac847AF3149",
+      "oracleType": "ChainlinkOracleV2",
+      "warnings": [
+        "COPYCAT"
+      ],
+      "loanAddress": "0x67240805b8477a514c3f9707f20fc05f34145505",
+      "why": "Loan token USDG (0x6724…5505) uses the USDG name but is not the Paxos contract. Lenders here are not lending the real asset."
+    }
+  ]
+}

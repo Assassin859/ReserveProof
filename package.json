@@ -33,6 +33,7 @@
     "status:rhmain": "hardhat run scripts/status.ts --network robinhoodMainnet",
     "verify:rhmain": "hardhat run scripts/verify.ts --network robinhoodMainnet",
     "market:size": "ts-node scripts/market-size.ts",
+    "gtm:targets": "ts-node scripts/gtm-targets.ts",
     "wallets": "ts-node scripts/make-wallets.ts",
     "status:rh": "hardhat run scripts/status.ts --network robinhoodTestnet",
     "status:arb": "hardhat run scripts/status.ts --network arbitrumSepolia",
