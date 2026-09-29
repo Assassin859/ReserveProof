@@ -7,10 +7,6 @@ on:
     - cron: "0 2 */3 * *"
   workflow_dispatch:
 
-concurrency:
-  group: ops-epoch
-  cancel-in-progress: false
-
 jobs:
   publish:
     name: ${{ matrix.network }}
@@ -19,6 +15,10 @@ jobs:
       fail-fast: false
       matrix:
         network: [robinhoodTestnet, arbitrumSepolia]
+    # Shared with the watchtower so the two never send transactions from the deployer key at once.
+    concurrency:
+      group: deployer-${{ matrix.network }}
+      cancel-in-progress: false
     env:
       DEPLOYER_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
       DEPLOYMENT_SALT: ${{ secrets.DEPLOYMENT_SALT }}

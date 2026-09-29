@@ -106,8 +106,8 @@ IOracle gated = new SolvencyGatedMorphoOracle(
 could keep quoting full price while the reserves are drained behind that earlier reason.
 
 The trade-off, stated plainly: Morpho calls `price()` in `borrow`, indebted `withdrawCollateral` and
-`liquidate` alike, so while the wrapper reverts, underwater loans can't be liquidated either. So the
-freeze is bounded, and tied to one incident:
+`liquidate` alike, so while the wrapper reverts, underwater loans can't be liquidated either. So each
+freeze is bounded:
 
 - **One continuous incident.** Anyone can call `poke()` while the proof fails. The first poke starts the
   clock and later pokes keep it alive. If nobody pokes for `maxPokeGap`, the clock is void, and the next
@@ -120,6 +120,14 @@ freeze is bounded, and tied to one incident:
 The residual risk: a custodian can hold a visible failure for 72 hours while someone keeps poking, then
 drain. By then the market has been frozen for three days, which is time for vault curators to pull
 liquidity or set caps to zero, and it prices the collateral at half.
+
+**The bound is per incident, not cumulative (CLOCK-RESET, open and disclosed).** A healthy poke clears
+the clock, and a clock nobody pokes for 6 hours is void. So a custodian that restores reserves long
+enough to pass a fresh proof (new samples and the live balance), then drains again, starts a new 72-hour
+freeze, and can repeat the cycle. Each round needs the reserves genuinely back on chain. Each one is
+public (`FreezeCleared` then `FreezeStarted`, and the freeze clock on [`/risk`](https://reserveproof-teal.vercel.app/risk)),
+and the hourly [watchtower](.github/workflows/watchtower.yml) pokes, so a quiet spell can't void a live
+clock. Carrying freeze time across incidents (a decaying freeze budget) is future work.
 
 It reverts instead of returning 0 because a zero price would let liquidators seize every position for
 free. `supply`, `withdraw`, `supplyCollateral`, `repay` and debt-free exits always work because Morpho
@@ -337,6 +345,13 @@ Books live in [`scripts/books.ts`](scripts/books.ts) (`packages/cli/examples/tes
 [Ops epoch](.github/workflows/ops-epoch.yml) workflow runs the cycle every three days (well inside the
 7-day `maxOracleAge`) and on demand. It needs the `DEPLOYER_PRIVATE_KEY` and `DEPLOYMENT_SALT`
 repository secrets.
+
+The hourly [Watchtower](.github/workflows/watchtower.yml) (`npm run watch:rh`, `watch:arb`;
+`WATCH_ACT=0` for read-only) re-runs the cycle if a proof has under 72 hours left or fails for a reason
+a fresh epoch fixes, pokes the Morpho wrapper, and fails the run on anything else: a failing proof, a
+running freeze clock, an overdue challenge, a slashable exit claim. Set an `ALERT_WEBHOOK_URL` secret
+(Discord or Slack) to be pinged as well. It shares a per-network concurrency group with Ops epoch, so
+the two never send transactions from the deployer key at once.
 
 **Settle every demo claim in the same session.** A claim left unsettled past its 72h payout window can
 be slashed by anyone, which permanently flips that asset to EXIT_DEFAULT. `exitright:demo` opens and

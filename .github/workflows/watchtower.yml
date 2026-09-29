@@ -1,0 +1,40 @@
+name: Watchtower
+
+# Hourly check of every published proof. Re-publishes if a scheduled ops-epoch run was missed
+# (under 72h to STALE), keeps the gated Morpho oracle's incident clock alive, and fails the run
+# (GitHub emails the failure) on anything it can't heal.
+on:
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
+    inputs:
+      act:
+        description: "Allow publishing and poking (false = read-only)"
+        type: boolean
+        default: true
+
+jobs:
+  watch:
+    name: ${{ matrix.network }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        network: [robinhoodTestnet, arbitrumSepolia]
+    # Shared with ops-epoch so the two never send transactions from the deployer key at once.
+    concurrency:
+      group: deployer-${{ matrix.network }}
+      cancel-in-progress: false
+    env:
+      DEPLOYER_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+      DEPLOYMENT_SALT: ${{ secrets.DEPLOYMENT_SALT }}
+      ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+      WATCH_ACT: ${{ github.event_name == 'workflow_dispatch' && !inputs.act && '0' || '1' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx hardhat run scripts/watchtower.ts --network ${{ matrix.network }}

@@ -13,6 +13,7 @@ import { buildSortedTree } from "../packages/merkle/src/index";
 import { BOOKS, assetAddress, readBook, type AssetKind } from "./books";
 import { publishEpoch } from "./publish-epoch";
 import { recordSamples } from "./record-samples";
+import { pokeGatedOracle } from "./morpho-poke";
 
 async function main() {
   const net = hre.network.name;
@@ -50,26 +51,8 @@ async function main() {
     const s = await oracle.status(dep.custodianId, assetOf(kind));
     console.log(`${net} ${kind}: ok=${s.ok} reason=${s.reason} epoch=${s.epochId}`);
   }
-  await pokeMorphoOracle();
+  await pokeGatedOracle(dep, oracle, net);
   if (failed.length) throw new Error(`cycle failed for: ${failed.join(", ")}`);
-
-  // Keep the gated Morpho oracle's incident clock in sync: every poke during a failure starts or
-  // extends it, and a poke after recovery clears it.
-  async function pokeMorphoOracle() {
-    if (!dep.contracts.SolvencyGatedMorphoOracle) return;
-    const gated = await ethers.getContractAt("SolvencyGatedMorphoOracle", dep.contracts.SolvencyGatedMorphoOracle);
-    const s = await oracle.status(dep.custodianId, await gated.asset());
-    const started = await gated.freezeStartedAt();
-    if (s.ok && started === 0n) {
-      console.log(`${net} morpho oracle: healthy, no clock, no poke needed`);
-      return;
-    }
-    await (await gated.poke()).wait();
-    const [running, startedAt, capEndsAt] = await gated.freezeState();
-    console.log(
-      `${net} morpho oracle: poked (${running ? `incident since ${startedAt}, discount from ${capEndsAt}` : "clock cleared"})`
-    );
-  }
 
   async function cycleAsset(kind: AssetKind) {
     const asset = assetOf(kind);
