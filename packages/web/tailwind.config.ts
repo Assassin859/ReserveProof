@@ -87,6 +87,10 @@ const config: Config = {
           "100%": { opacity: "1", transform: "translate(-50%, -40%) scale(1)" },
         },
         shimmer: { from: { backgroundPosition: "0 0" }, to: { backgroundPosition: "-200% 0" } },
+        "grid-fade": {
+          "0%, 100%": { opacity: "0" },
+          "50%": { opacity: "1" },
+        },
         "pulse-ring": {
           "0%": { transform: "scale(0.8)", opacity: "0.7" },
           "80%, 100%": { transform: "scale(2.2)", opacity: "0" },
@@ -99,6 +103,7 @@ const config: Config = {
         spotlight: "spotlight 2s ease 0.75s 1 forwards",
         shimmer: "shimmer 2.5s linear infinite",
         "pulse-ring": "pulse-ring 2s cubic-bezier(0.2, 0.6, 0.4, 1) infinite",
+        "grid-fade": "grid-fade 6s ease-in-out infinite",
       },
     },
   },

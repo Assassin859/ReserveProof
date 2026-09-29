@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useReadContract, usePublicClient, useAccount } from "wagmi";
 import {
@@ -31,10 +30,8 @@ import { reasonLabel } from "../lib/reasons";
 import { SCENES, SCENE_EXIT, SCENE_VERIFY, SCENE_WHATIF, type Deployment } from "../lib/types";
 import {
   ASSET_META,
-  DEMO_VIDEO_URL,
   GITHUB_URL,
   NETWORKS,
-  NETWORK_KEYS,
   defaultNetwork,
   type AssetKind,
   type NetworkKey,
@@ -46,58 +43,25 @@ import {
   type ScenarioId,
   type WhatIfOverrides,
 } from "../lib/whatif";
-import { SITE_STATS } from "../lib/mainnet";
 import { MainnetSection } from "./MainnetSection";
 import { CompareSection } from "./CompareSection";
+import { Section } from "./site/PageHeader";
+import { KpiCard } from "./site/KpiCard";
+import { Card, CardContent } from "./ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { HomeHero } from "./home/HomeHero";
+import { StatusCard, type CustodyRow } from "./home/StatusCard";
+import { ExploreSection } from "./home/ExploreSection";
+import { NetworkSwitch, Note } from "./home/parts";
+import { ActionLog, ExitScene, LedgerScene, VerifyScene, WalletScene, WhatIfScene } from "./home/DemoScenes";
+import type { VaultState } from "./home/MerkleVault";
+import type { ExitInfo, GateKind, GateResult, GateRow, SimResult } from "./home/types";
 
 type ChainId = 46630 | 421614 | 31337;
 
 type Status = { ok: boolean; epochId: bigint; updatedAt: bigint; reason: number };
 
-type ExitInfo = {
-  bondBalance: bigint;
-  bondInFlight: bigint;
-  perClaim: bigint;
-  payoutDelay: bigint;
-  configured: boolean;
-  claimCount: bigint;
-  exitDefault: boolean;
-  last?: {
-    id: bigint;
-    user: Address;
-    amount: bigint;
-    deadline: bigint;
-    open: boolean;
-    settled: boolean;
-    slashed: boolean;
-  };
-};
-
 type Verification = { total: number; verified: number; unverified: string[]; unknown: number; checkedAt: string };
-
-type GateResult = "allowed" | string;
-
-type GateKind = "payout" | "withdraw" | "borrow" | "morpho";
-
-type GateRow = {
-  kind: GateKind;
-  label: string;
-  live: GateResult;
-  sim: GateResult;
-  liveText?: string;
-  simText?: string;
-  staysOpen?: boolean;
-  openNote?: string;
-};
-
-type SimResult = {
-  id: ScenarioId;
-  detail: string;
-  liveReason: number | null;
-  reason: number | null;
-  gates: GateRow[];
-  error?: string;
-};
 
 /**
  * `staysOpen`: the action is deliberately not gated in this scenario, so "allowed" under a failing proof
@@ -230,7 +194,7 @@ export function KopiApp() {
   const [sim, setSim] = useState<SimResult | null>(null);
   const [simBusy, setSimBusy] = useState<ScenarioId | null>(null);
   const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
-  const scenesRef = useRef<HTMLElement>(null);
+  const scenesRef = useRef<HTMLDivElement>(null);
 
   const net = NETWORKS[network];
   const isLocal = network === "localhost";
@@ -743,8 +707,6 @@ export function KopiApp() {
     setSim(null);
   }, [network]);
 
-  const current = SCENES.find((s) => s.id === scene)!;
-  const simScenario = sim ? SCENARIOS.find((s) => s.id === sim.id)! : null;
   const exitHomeElsewhere = !isLocal && exitInfo !== null && !exitInfo.configured && !net.books.exitright;
   const verifiedHref =
     network === "robinhoodTestnet"
@@ -759,10 +721,37 @@ export function KopiApp() {
   const verifiedText = isLocal || !verification ? "—" : `${verification.verified} / ${verification.total}`;
   const verifiedShort = verification !== null && verification.unverified.length > 0;
   const verifiedUnchecked = verification !== null && verification.unknown > 0;
+  const floorText = percent(floorBps !== undefined ? BigInt(floorBps) : undefined);
 
+  const simSummaryText =
+    sim &&
+    !sim.error &&
+    sim.reason === SCENARIO_EXPECTED_REASON[sim.id] &&
+    sim.gates.length > 0 &&
+    sim.gates.every((g) => (g.staysOpen ? g.sim === "allowed" : g.sim !== "allowed"))
+      ? simSummary(sim.gates, reasonLabel(sim.reason ?? undefined), net.label, morphoFreeze)
+      : null;
+
+  const simulated = sim && !sim.error && sim.reason !== null ? sim : null;
+  const vaultState: VaultState = simulated
+    ? simulated.reason === 0
+      ? "solvent"
+      : "insolvent"
+    : parsed
+      ? parsed.ok
+        ? "solvent"
+        : "insolvent"
+      : "unknown";
+  const vaultCaption = simulated
+    ? `What-if: ${SCENARIOS.find((s) => s.id === simulated.id)?.button} · ${reasonLabel(simulated.reason ?? undefined)}`
+    : parsed
+      ? `Live mTSLA proof on ${net.label} · ${parsed.ok ? "solvent" : reasonLabel(parsed.reason)}`
+      : `Reading ${net.label}…`;
+
+  const linkCls = "text-primary underline-offset-4 hover:underline";
   const txLink = (hash?: string | null) =>
     hash && net.explorer ? (
-      <a href={`${net.explorer}/tx/${hash}`} target="_blank" rel="noreferrer">
+      <a href={`${net.explorer}/tx/${hash}`} target="_blank" rel="noreferrer" className={linkCls}>
         {short(hash)} ↗
       </a>
     ) : (
@@ -770,550 +759,266 @@ export function KopiApp() {
     );
   const addrLink = (addr?: string) =>
     addr && net.explorer ? (
-      <a href={`${net.explorer}/address/${addr}`} target="_blank" rel="noreferrer">
+      <a href={`${net.explorer}/address/${addr}`} target="_blank" rel="noreferrer" className={linkCls}>
         {short(addr)} ↗
       </a>
     ) : (
       short(addr)
     );
 
-  return (
-    <div className="shell">
-      <header className="hero">
-        <div className="hero-copy">
-          <p className="eyebrow">ReserveProof · proof of reserves for USDG and Robinhood Stock Tokens · Robinhood Chain</p>
-          <h1 className="headline">Proof that your custodian actually holds your stocks and dollars.</h1>
-          <p className="lede">
-            When a custodian fails, customers find out last. ReserveProof puts the proof on-chain instead: the
-            custodian commits what it owes, reserves are read straight from its wallets, and anyone can check
-            their own balance. A lending market adds one modifier, <code>onlySolvent(asset)</code>, or wraps its
-            Morpho oracle, and new borrowing stops automatically the moment the proof fails. Repaying and exiting
-            never do.
-          </p>
-          <div className="cta-row">
-            <button type="button" className="primary" onClick={() => goToScene(SCENE_VERIFY)}>
-              Verify a balance
-            </button>
-            <button type="button" className="ghost" onClick={() => goToScene(SCENE_WHATIF)}>
-              Try the what-if simulator
-            </button>
-            <Link className="ghost" href="/verify">
-              Verify every claim
-            </Link>
-            <Link className="ghost" href="/risk">
-              Curator risk
-            </Link>
-            <Link className="ghost" href="/compare">
-              How we differ
-            </Link>
-            {DEMO_VIDEO_URL && (
-              <a className="ghost" href={DEMO_VIDEO_URL} target="_blank" rel="noreferrer">
-                Watch the demo
-              </a>
-            )}
-            <a className="ghost" href={GITHUB_URL} target="_blank" rel="noreferrer">
-              GitHub
-            </a>
-          </div>
-          <p className="proof-line">
-            <a href={`${GITHUB_URL}/actions/workflows/ci.yml`} target="_blank" rel="noreferrer">
-              <strong>{SITE_STATS.tests.total} tests</strong>
-            </a>{" "}
-            ({SITE_STATS.tests.hardhat} Hardhat, {SITE_STATS.tests.foundryFuzz} fuzz, {SITE_STATS.tests.foundryUnit}{" "}
-            Foundry unit, {SITE_STATS.tests.invariants} invariants) · verified on both chains ·{" "}
-            <a
-              href={`${GITHUB_URL}/blob/master/src/integrations/SolvencyGatedMorphoOracle.sol`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Morpho Blue oracle wrapper
-            </a>{" "}
-            tested against the real Morpho core
-          </p>
-        </div>
+  function changeNetwork(k: NetworkKey) {
+    setNetwork(k);
+    setActionLog(null);
+    setVerifyMsg(null);
+    setBalResult(null);
+    setBalError(null);
+  }
 
-        <aside className="status-panel" aria-label="Live status">
-          <div className="netswitch" role="group" aria-label="Network">
-            {NETWORK_KEYS.map((k) => (
-              <button
-                key={k}
-                type="button"
-                className={network === k ? "step active" : "step"}
-                onClick={() => {
-                  setNetwork(k);
-                  setActionLog(null);
-                  setVerifyMsg(null);
-                  setBalResult(null);
-                  setBalError(null);
-                }}
-              >
-                {NETWORKS[k].label}
-              </button>
-            ))}
-          </div>
-          <div className="stat">
-            <span className="label">mTSLA custody</span>
-            <span className="row">
-              <span className={`pill ${parsed?.ok ? "ok" : "bad"}`}>
-                {parsed ? (parsed.ok ? "solvent" : "insolvent") : "—"}
-              </span>
-              <span className="value mono">{parsed ? reasonLabel(parsed.reason) : ""}</span>
-            </span>
-          </div>
-          <div className="stat">
-            <span className="label">USDG custody</span>
-            {usdgHomeOnly ? (
-              <span className="value muted-text">published on Robinhood</span>
-            ) : (
-              <span className="row">
-                <span className={`pill ${parsedUsdg?.ok ? "ok" : "bad"}`}>
-                  {parsedUsdg ? (parsedUsdg.ok ? "solvent" : "insolvent") : "—"}
-                </span>
-                <span className="value mono">{parsedUsdg ? reasonLabel(parsedUsdg.reason) : ""}</span>
-              </span>
-            )}
-          </div>
-          <div className="stat">
-            <span className="label">TSLA custody (real Robinhood stock token)</span>
-            {tsla ? (
-              <span className="row">
-                <span className={`pill ${parsedTsla?.ok ? "ok" : "bad"}`}>
-                  {parsedTsla ? (parsedTsla.ok ? "solvent" : "insolvent") : "—"}
-                </span>
-                <span className="value mono">{parsedTsla ? reasonLabel(parsedTsla.reason) : ""}</span>
-              </span>
-            ) : (
-              <span className="value muted-text">published on Robinhood</span>
-            )}
-          </div>
-          <div className="stat">
-            <span className="label">Demo custodian</span>
-            <span className="value">Kopi Wallet</span>
-          </div>
-          <div className="stat">
-            <span className="label">Oracle</span>
-            <span className="value mono">{addrLink(oracle)}</span>
-          </div>
-          <div className="stat wide">
-            <span className="label">Reserve wallet</span>
-            <span className="value mono">{addrLink(reserveWallet)}</span>
-          </div>
-          <button type="button" className="icon-btn" onClick={refreshAll} aria-label="Refresh live status">
-            ↻ Refresh
-          </button>
-        </aside>
-      </header>
+  function selectScene(v: string) {
+    setScene(Number(v));
+    setActionLog(null);
+    setVerifyMsg(null);
+  }
 
-      <MainnetSection />
+  const custodyRows: CustodyRow[] = [
+    { label: "mTSLA custody", hint: "demo stock token", status: parsed },
+    {
+      label: "USDG custody",
+      hint: "Paxos dollar stablecoin",
+      status: parsedUsdg,
+      elsewhere: usdgHomeOnly ? "published on Robinhood" : undefined,
+    },
+    {
+      label: "TSLA custody",
+      hint: "real Robinhood stock token",
+      status: parsedTsla,
+      elsewhere: tsla ? undefined : "published on Robinhood",
+    },
+  ];
 
-      <CompareSection onWhatIf={() => goToScene(SCENE_WHATIF)} />
+  const ledgerItems: [React.ReactNode, React.ReactNode][] = [
+    ["Epoch", epochId ? String(epochId) : "—"],
+    ["Liability root", epochData?.liabilityRoot ? short(epochData.liabilityRoot) : "—"],
+    ["Owed to customers", amount(epochData?.totalLiability, "stock")],
+    ["Allocated to this chain", amount(epochData?.allocation, "stock")],
+    ["Live balance", amount(typeof liveReserves === "bigint" ? liveReserves : undefined, "stock")],
+    ["Lowest sample this epoch", amount(sampleMin, "stock")],
+    [
+      "Coverage",
+      <span key="c">
+        <strong className={covered === false ? "text-destructive" : "text-success"}>{percent(coverageBps)}</strong>{" "}
+        <span className="text-muted-foreground">counted (min of samples and live) · required ≥ {floorText}</span>
+      </span>,
+    ],
+  ];
 
-      <p className="section-kicker">
-        Live demo: Kopi Wallet on {net.label}{" "}
-        <span className="muted-text">· every figure below is read from the chain as you watch</span>
-      </p>
-      <section className="live-strip" aria-label="Live proof">
-        <div className="strip-cell">
-          <span className="label">Latest epoch</span>
-          <span className="big">{epochId ? String(epochId) : "—"}</span>
-          <a
-            className="sub"
-            href={`${GITHUB_URL}/actions/workflows/ops-epoch.yml`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            auto-published every 3 days ↗
-          </a>
-        </div>
-        <div className="strip-cell">
-          <span className="label">Last published</span>
-          <span className="big">{ago(parsed?.updatedAt, nowSec)}</span>
-          <span className="sub">
-            {parsed?.updatedAt && parsed.updatedAt > ZERO
-              ? new Date(Number(parsed.updatedAt) * 1000).toUTCString().slice(5, 22) + " UTC"
-              : "—"}
-          </span>
-        </div>
-        <div className="strip-cell">
-          <span className="label">mTSLA coverage</span>
-          <span className={`big ${covered === false ? "bad-text" : ""}`}>{percent(coverageBps)}</span>
-          <span className="sub">
-            min(samples, live) · required ≥ {percent(floorBps !== undefined ? BigInt(floorBps) : undefined)}
-          </span>
-        </div>
-        <div className="strip-cell">
-          <span className="label">Contracts verified</span>
-          <span className={`big ${verifiedShort ? "bad-text" : verifiedUnchecked ? "warn-text" : ""}`}>
-            {verifiedText}
-          </span>
-          {verifiedUnchecked && (
-            <span className="sub warn-text">
-              {verification!.unknown} could not be checked right now
-            </span>
-          )}
-          {verifiedHref ? (
-            <a
-              className="sub"
-              href={verifiedHref}
-              target="_blank"
-              rel="noreferrer"
-              title={
-                verification
-                  ? `Checked ${new Date(verification.checkedAt).toUTCString()}${
-                      verification.unverified.length ? ` · not verified: ${verification.unverified.join(", ")}` : ""
-                    }${verification.unknown ? ` · ${verification.unknown} could not be checked` : ""}`
-                  : undefined
-              }
-            >
-              checked on {network === "robinhoodTestnet" ? "Blockscout" : "Sourcify"} ↗
-            </a>
-          ) : (
-            <span className="sub">local node</span>
-          )}
-        </div>
-      </section>
+  const exitTxRows: [React.ReactNode, React.ReactNode][] | null = net.books.exitright
+    ? [
+        ["openClaim tx", txLink(net.books.exitright.txs.openClaim)],
+        ["settle tx", txLink(net.books.exitright.txs.settle)],
+        ["Recorded", net.books.exitright.recordedAt.slice(0, 10)],
+      ]
+    : null;
 
-      {loadError && (
-        <div className="banner warn">
-          {loadError} Start the Hardhat node, then <code>npm run demo:setup</code>.
-        </div>
-      )}
-
-      <nav className="stepper" aria-label="Demo scenes" ref={scenesRef}>
-        {SCENES.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            className={scene === s.id ? "step active" : "step"}
-            onClick={() => {
-              setScene(s.id);
-              setActionLog(null);
-              setVerifyMsg(null);
+  function sceneBody(id: number) {
+    switch (id) {
+      case 1:
+        return <WalletScene onCheck={() => void runScene1()} />;
+      case 2:
+        return <LedgerScene items={ledgerItems} covered={covered} floor={floorText} />;
+      case SCENE_VERIFY:
+        return (
+          <VerifyScene
+            asset={balAsset}
+            onAsset={(k) => {
+              setBalAsset(k);
+              setBalResult(null);
+              setBalError(null);
             }}
-          >
-            <span className="num">{s.id}</span>
-            <span className="stitle">{s.title}</span>
-          </button>
-        ))}
-      </nav>
+            addr={balAddr}
+            onAddr={setBalAddr}
+            onDemo={fillDemoUser}
+            walletAddress={isConnected ? address : undefined}
+            busy={balBusy}
+            onCheck={() => void runBalanceCheck()}
+            error={balError}
+            result={balResult}
+            fmt={amount}
+            short={short}
+            proofText={proofText}
+            onProofText={setProofText}
+            onVerifyPasted={() => void runVerify()}
+            verifyMsg={verifyMsg}
+          />
+        );
+      case SCENE_WHATIF:
+        return (
+          <WhatIfScene
+            sim={sim}
+            busy={simBusy}
+            onRun={(sid) => void runWhatIf(sid)}
+            onReset={() => setSim(null)}
+            summary={simSummaryText}
+            isLocal={isLocal}
+            gateLabel={gateLabel}
+          />
+        );
+      case SCENE_EXIT:
+        return (
+          <ExitScene
+            homeElsewhere={exitHomeElsewhere}
+            netLabel={net.label}
+            onSwitchHome={() => setNetwork("robinhoodTestnet")}
+            info={exitInfo}
+            fmt={amount}
+            short={short}
+            txRows={exitTxRows}
+            isLocal={isLocal}
+          />
+        );
+      default:
+        return null;
+    }
+  }
 
-      <main className="scene">
-        <h2>{current.title}</h2>
-        <p className="blurb">{current.blurb}</p>
+  return (
+    <>
+      <HomeHero
+        vaultState={vaultState}
+        vaultCaption={vaultCaption}
+        statusCard={
+          <StatusCard
+            network={network}
+            onNetwork={changeNetwork}
+            rows={custodyRows}
+            oracle={addrLink(oracle)}
+            reserve={addrLink(reserveWallet)}
+            onRefresh={refreshAll}
+          />
+        }
+      />
 
-        {scene === 1 && (
-          <div className="actions">
-            <button type="button" className="primary" onClick={() => void runScene1()}>
-              Check who owns the reserve wallet
-            </button>
-          </div>
-        )}
+      <div className="container space-y-20 py-14 md:space-y-24 md:py-20">
+        <MainnetSection />
 
-        {scene === 2 && (
-          <div className="actions">
-            <dl className="kv">
-              <dt>Epoch</dt>
-              <dd className="mono">{epochId ? String(epochId) : "—"}</dd>
-              <dt>Liability root</dt>
-              <dd className="mono">{epochData?.liabilityRoot ? short(epochData.liabilityRoot) : "—"}</dd>
-              <dt>Owed to customers</dt>
-              <dd>{amount(epochData?.totalLiability, "stock")}</dd>
-              <dt>Allocated to this chain</dt>
-              <dd>{amount(epochData?.allocation, "stock")}</dd>
-              <dt>Live balance</dt>
-              <dd>{amount(typeof liveReserves === "bigint" ? liveReserves : undefined, "stock")}</dd>
-              <dt>Lowest sample this epoch</dt>
-              <dd>{amount(sampleMin, "stock")}</dd>
-              <dt>Coverage</dt>
-              <dd>
-                <strong>{percent(coverageBps)}</strong> counted (min of samples and live) · required ≥{" "}
-                {percent(floorBps !== undefined ? BigInt(floorBps) : undefined)}
-              </dd>
-            </dl>
-            {covered !== undefined && (
-              <p className={`result ${covered ? "" : "bad"}`}>
-                {covered
-                  ? `Reserves cover the allocation above the ${percent(BigInt(floorBps!))} floor, so the oracle reports solvent.`
-                  : `Reserves are below the ${percent(BigInt(floorBps!))} floor, so the oracle fails closed.`}
-              </p>
-            )}
-          </div>
-        )}
-
-        {scene === SCENE_VERIFY && (
-          <div className="actions">
-            <div className="row">
-              {(["stock", "usdg", "tsla"] as AssetKind[]).map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  className={balAsset === k ? "step active" : "step"}
-                  onClick={() => {
-                    setBalAsset(k);
-                    setBalResult(null);
-                    setBalError(null);
-                  }}
+        <Section
+          id="demo"
+          kicker="Live demo"
+          title={<>Kopi Wallet on {net.label}</>}
+          description="Every figure below is read from the chain as you watch. Nothing is signed or sent, and no wallet is needed."
+          actions={<NetworkSwitch value={network} onChange={changeNetwork} />}
+        >
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <KpiCard
+              label="Latest epoch"
+              value={epochId ? Number(epochId) : undefined}
+              sub={
+                <a
+                  href={`${GITHUB_URL}/actions/workflows/ops-epoch.yml`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="hover:text-primary"
                 >
-                  {ASSET_META[k].label}
-                </button>
-              ))}
-            </div>
-            <label className="field">
-              <span>Your address</span>
-              <input
-                value={balAddr}
-                onChange={(e) => setBalAddr(e.target.value)}
-                spellCheck={false}
-                placeholder="0x…"
-              />
-            </label>
-            <div className="row">
-              <button type="button" className="ghost" onClick={fillDemoUser}>
-                Try demo user
-              </button>
-              {isConnected && address && (
-                <button type="button" className="ghost" onClick={() => setBalAddr(address)}>
-                  Use my wallet
-                </button>
-              )}
-              <button
-                type="button"
-                className="primary"
-                disabled={balBusy}
-                onClick={() => void runBalanceCheck()}
+                  auto-published every 3 days ↗
+                </a>
+              }
+            />
+            <KpiCard
+              label="Last published"
+              display={ago(parsed?.updatedAt, nowSec)}
+              sub={
+                parsed?.updatedAt && parsed.updatedAt > ZERO
+                  ? new Date(Number(parsed.updatedAt) * 1000).toUTCString().slice(5, 22) + " UTC"
+                  : "—"
+              }
+            />
+            <KpiCard
+              label="mTSLA coverage"
+              display={percent(coverageBps)}
+              tone={covered === false ? "bad" : covered ? "ok" : "neutral"}
+              sub={<>min(samples, live) · required ≥ {floorText}</>}
+            />
+            <KpiCard
+              label="Contracts verified"
+              display={verifiedText}
+              tone={verifiedShort ? "bad" : verifiedUnchecked ? "warn" : verification ? "ok" : "neutral"}
+              sub={
+                <>
+                  {verifiedUnchecked && (
+                    <span className="block text-warning">{verification!.unknown} could not be checked right now</span>
+                  )}
+                  {verifiedHref ? (
+                    <a
+                      href={verifiedHref}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="hover:text-primary"
+                      title={
+                        verification
+                          ? `Checked ${new Date(verification.checkedAt).toUTCString()}${
+                              verification.unverified.length ? ` · not verified: ${verification.unverified.join(", ")}` : ""
+                            }${verification.unknown ? ` · ${verification.unknown} could not be checked` : ""}`
+                          : undefined
+                      }
+                    >
+                      checked on {network === "robinhoodTestnet" ? "Blockscout" : "Sourcify"} ↗
+                    </a>
+                  ) : (
+                    "local node"
+                  )}
+                </>
+              }
+            />
+          </div>
+
+          {loadError && (
+            <Note tone="bad" className="mt-4">
+              {loadError} Start the Hardhat node, then <code className="font-mono">npm run demo:setup</code>.
+            </Note>
+          )}
+
+          <div ref={scenesRef} className="mt-8 scroll-mt-24">
+            <Tabs value={String(scene)} onValueChange={selectScene} className="grid gap-5 lg:grid-cols-[250px_minmax(0,1fr)]">
+              <TabsList
+                aria-label="Demo scenes"
+                className="flex h-auto w-full justify-start gap-1 overflow-x-auto rounded-xl border border-border/60 bg-card/40 p-1.5 lg:sticky lg:top-20 lg:flex-col lg:items-stretch lg:self-start lg:overflow-visible"
               >
-                {balBusy ? "Checking…" : "Verify my balance"}
-              </button>
-            </div>
-            {balError && <p className="result bad">{balError}</p>}
-            {balResult && (
-              <div className="verify-card">
-                <p className={`result ${balResult.verified ? "" : "bad"}`}>
-                  {balResult.verified
-                    ? `✓ ${short(balResult.user)} holds ${amount(balResult.amount, balResult.asset)} in epoch ${balResult.epochId}, proven against the on-chain root.`
-                    : !balResult.rootMatches
-                      ? "✗ The published book does not rebuild to the on-chain root, so this UI's copy is out of date."
-                      : `✗ ${short(balResult.user)} is not in the ${ASSET_META[balResult.asset].label} book for epoch ${balResult.epochId}.`}
-                </p>
-                <dl className="kv">
-                  <dt>Epoch</dt>
-                  <dd className="mono">{balResult.epochId}</dd>
-                  <dt>Computed root</dt>
-                  <dd className="mono">{balResult.computedRoot}</dd>
-                  <dt>On-chain root</dt>
-                  <dd className="mono">
-                    {balResult.onchainRoot} {balResult.rootMatches ? "✓" : "✗"}
-                  </dd>
-                  {balResult.found && (
-                    <>
-                      <dt>Proof path</dt>
-                      <dd>
-                        <ol className="proof-path">
-                          {balResult.proof.map((p, i) => (
-                            <li key={i} className="mono">
-                              {p.isLeft ? "left " : "right"} sibling {short(p.hash)} · sum{" "}
-                              {amount(BigInt(p.sum), balResult.asset)}
-                            </li>
-                          ))}
-                        </ol>
-                      </dd>
-                    </>
-                  )}
-                </dl>
-                {balResult.found && (
-                  <button
-                    type="button"
-                    className="ghost"
-                    onClick={() =>
-                      setProofText(
-                        JSON.stringify(
-                          {
-                            user: balResult.user,
-                            amount: balResult.amount.toString(),
-                            proof: balResult.proof.map((p) => ({ ...p, sum: String(p.sum) })),
-                          },
-                          null,
-                          2
-                        )
-                      )
-                    }
+                {SCENES.map((s) => (
+                  <TabsTrigger
+                    key={s.id}
+                    value={String(s.id)}
+                    className="group shrink-0 justify-start gap-2.5 rounded-lg px-3 py-2 text-left text-sm data-[state=active]:bg-primary/10 data-[state=active]:text-foreground data-[state=active]:shadow-none"
                   >
-                    Export as proof JSON
-                  </button>
-                )}
-              </div>
-            )}
-            <details className="advanced">
-              <summary>Advanced: paste a proof JSON</summary>
-              <label className="field">
-                <span>Proof JSON exported above or produced by the CLI</span>
-                <textarea
-                  value={proofText}
-                  onChange={(e) => setProofText(e.target.value)}
-                  rows={8}
-                  spellCheck={false}
-                  placeholder='{"user":"0x…","amount":"…","proof":[{...}]}'
-                />
-              </label>
-              <button type="button" className="primary" onClick={() => void runVerify()}>
-                Verify pasted proof
-              </button>
-              {verifyMsg && <p className="result">{verifyMsg}</p>}
-            </details>
-          </div>
-        )}
-
-        {scene === SCENE_WHATIF && (
-          <div className="actions">
-            <div className="sim-grid">
-              {SCENARIOS.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  className={`sim-card ${sim?.id === s.id ? "active" : ""}`}
-                  disabled={simBusy !== null}
-                  onClick={() => void runWhatIf(s.id)}
-                >
-                  <span className="sim-btn">{simBusy === s.id ? "Simulating…" : s.button}</span>
-                  <span className="sim-story">{s.story}</span>
-                </button>
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border font-mono text-[0.7rem] group-data-[state=active]:border-primary/60 group-data-[state=active]:text-primary">
+                      {s.id}
+                    </span>
+                    {s.title}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+              {SCENES.map((s) => (
+                <TabsContent key={s.id} value={String(s.id)} className="mt-0 min-w-0">
+                  <Card className="border-border/70 bg-card/60">
+                    <CardContent className="p-5 md:p-7">
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">
+                        Scene {s.id} of {SCENES.length}
+                      </p>
+                      <h3 className="mt-1 font-display text-2xl font-semibold tracking-tight">{s.title}</h3>
+                      <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">{s.blurb}</p>
+                      <div className="mt-6">{sceneBody(s.id)}</div>
+                      {actionLog && <ActionLog text={actionLog} />}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
               ))}
-            </div>
-
-            {sim && simScenario && (
-              <div className="sim-result">
-                <h3>{simScenario.title}</h3>
-                <p className="muted-text">
-                  What changed (simulated, nothing sent): <span className="mono">{sim.detail}</span>
-                </p>
-                {sim.error ? (
-                  <p className="result bad">{sim.error}</p>
-                ) : (
-                  <table className="compare">
-                    <thead>
-                      <tr>
-                        <th />
-                        <th>Live chain now</th>
-                        <th>With this change</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <td>Oracle status</td>
-                        <td>
-                          <span className={`pill ${sim.liveReason === 0 ? "ok" : "bad"}`}>
-                            {reasonLabel(sim.liveReason ?? undefined)}
-                          </span>
-                        </td>
-                        <td>
-                          <span className={`pill ${sim.reason === 0 ? "ok" : "bad"}`}>
-                            {reasonLabel(sim.reason ?? undefined)}
-                          </span>
-                        </td>
-                      </tr>
-                      {sim.gates.map((g) => (
-                        <tr key={g.label}>
-                          <td>{g.label}</td>
-                          <td>
-                            <span className={`pill ${g.live === "allowed" ? "ok" : "bad"}`}>
-                              {gateLabel(g.live, g.liveText)}
-                            </span>
-                          </td>
-                          <td>
-                            <span className={`pill ${g.sim === "allowed" ? "ok" : "bad"}`}>
-                              {gateLabel(g.sim, g.simText, g.staysOpen ? g.openNote : undefined)}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-                {!sim.error &&
-                  sim.reason === SCENARIO_EXPECTED_REASON[sim.id] &&
-                  sim.gates.length > 0 &&
-                  sim.gates.every((g) => (g.staysOpen ? g.sim === "allowed" : g.sim !== "allowed")) && (
-                    <p className="result">{simSummary(sim.gates, reasonLabel(sim.reason ?? undefined), net.label, morphoFreeze)}</p>
-                  )}
-                <button type="button" className="ghost" onClick={() => setSim(null)}>
-                  Reset
-                </button>
-              </div>
-            )}
-
-            {isLocal && (
-              <p className="hint">
-                On the local node you can also make these changes for real: <code>SCENE=4|5|6|7 npm run demo:prepare</code>,
-                then <code>npm run demo:reset</code>.
-              </p>
-            )}
+            </Tabs>
           </div>
-        )}
+        </Section>
 
-        {scene === SCENE_EXIT && (
-          <div className="actions">
-            {exitHomeElsewhere ? (
-              <>
-                <p className="result">
-                  ExitRight&apos;s bond and the recorded claim live on Robinhood testnet, the home chain for this
-                  demo. {net.label} runs the same contracts without a bond posted.
-                </p>
-                <button type="button" className="primary" onClick={() => setNetwork("robinhoodTestnet")}>
-                  Switch to Robinhood testnet
-                </button>
-              </>
-            ) : (
-              <>
-                <dl className="kv">
-                  <dt>Bond posted</dt>
-                  <dd className="mono">{exitInfo ? amount(exitInfo.bondBalance, "usdg") : "…"}</dd>
-                  <dt>Bond in flight</dt>
-                  <dd className="mono">{exitInfo ? amount(exitInfo.bondInFlight, "usdg") : "…"}</dd>
-                  <dt>Bond per claim</dt>
-                  <dd className="mono">{exitInfo?.configured ? amount(exitInfo.perClaim, "usdg") : "…"}</dd>
-                  <dt>Payout window</dt>
-                  <dd className="mono">
-                    {exitInfo?.configured ? `${Number(exitInfo.payoutDelay) / 3600} h` : "—"}
-                  </dd>
-                  <dt>Claims opened</dt>
-                  <dd className="mono">{exitInfo ? String(exitInfo.claimCount) : "…"}</dd>
-                  <dt>Exit default (mTSLA)</dt>
-                  <dd className="mono">{exitInfo ? (exitInfo.exitDefault ? "YES, permanent" : "no") : "…"}</dd>
-                  {exitInfo?.last && (
-                    <>
-                      <dt>Last claim</dt>
-                      <dd className="mono">
-                        #{String(exitInfo.last.id)} · {short(exitInfo.last.user)} ·{" "}
-                        {amount(exitInfo.last.amount, "stock")} ·{" "}
-                        {exitInfo.last.settled ? "settled ✓" : exitInfo.last.slashed ? "slashed ✗" : "open"}
-                      </dd>
-                    </>
-                  )}
-                </dl>
-                {net.books.exitright && (
-                  <dl className="kv">
-                    <dt>openClaim tx</dt>
-                    <dd className="mono">{txLink(net.books.exitright.txs.openClaim)}</dd>
-                    <dt>settle tx</dt>
-                    <dd className="mono">{txLink(net.books.exitright.txs.settle)}</dd>
-                    <dt>Recorded</dt>
-                    <dd className="mono">{net.books.exitright.recordedAt.slice(0, 10)}</dd>
-                  </dl>
-                )}
-                {isLocal && !net.books.exitright && (
-                  <p className="hint">
-                    Run <code>npx hardhat run scripts/exitright-setup.ts --network localhost</code> then{" "}
-                    <code>scripts/exitright-demo.ts</code>.
-                  </p>
-                )}
-              </>
-            )}
-          </div>
-        )}
+        <CompareSection onWhatIf={() => goToScene(SCENE_WHATIF)} />
 
-        {actionLog && <pre className="log">{actionLog}</pre>}
-      </main>
-
-    </div>
+        <ExploreSection />
+      </div>
+    </>
   );
 }

@@ -1,7 +1,14 @@
 import Link from "next/link";
 import { GITHUB_URL } from "../lib/deployments";
+import { CodeBlock } from "./site/CopyButton";
+import { Section } from "./site/PageHeader";
+import { StateBadge } from "./site/StateBadge";
+import { Card, CardContent } from "./ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 
 const STOCKGUARD_URL = "https://arbitrum-singapore.hackquest.io/projects/StockGuard";
+
+const code = (s: string) => <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.8em] text-foreground">{s}</code>;
 
 const ROWS: { label: string; price: React.ReactNode; reserve: React.ReactNode }[] = [
   {
@@ -14,10 +21,9 @@ const ROWS: { label: string; price: React.ReactNode; reserve: React.ReactNode }[
     price: "Market closed, a split or dividend mid-flight, the wrong feed, a copycat token",
     reserve: (
       <>
-        Reserves drained (<code>LIVE_SHORT</code>), a proof left to go <code>STALE</code>, liabilities understated
-        (user fraud proofs, <code>DISPUTED</code>), an unanswered balance challenge, an unpaid exit claim (
-        <code>EXIT_DEFAULT</code>), a stock split the liability book hasn&apos;t caught up with (
-        <code>MULTIPLIER_DRIFT</code>)
+        Reserves drained ({code("LIVE_SHORT")}), a proof left to go {code("STALE")}, liabilities understated (user fraud
+        proofs, {code("DISPUTED")}), an unanswered balance challenge, an unpaid exit claim ({code("EXIT_DEFAULT")}), a
+        stock split the liability book hasn&apos;t caught up with ({code("MULTIPLIER_DRIFT")})
       </>
     ),
   },
@@ -33,11 +39,20 @@ const ROWS: { label: string; price: React.ReactNode; reserve: React.ReactNode }[
   },
 ];
 
+const STACK_CODE = `new SolvencyGatedMorphoOracle(
+    stockGuardOracle,           // base price: already refuses bad prices
+    solvencyOracle, custodianId, TSLA,
+    72 hours, 6 hours, 5000     // freeze cap, poke gap, 50% price after the cap
+);`;
+
+const link = "text-primary underline-offset-4 hover:underline";
+
 /** Price guards vs ReserveProof: why a stock-token market needs both. Used on / and /compare. */
 export function CompareSection({ standalone = false, onWhatIf }: { standalone?: boolean; onWhatIf?: () => void }) {
   const whatIf = onWhatIf ? (
     <a
-      href="#"
+      href="#demo"
+      className={link}
       onClick={(e) => {
         e.preventDefault();
         onWhatIf();
@@ -46,70 +61,87 @@ export function CompareSection({ standalone = false, onWhatIf }: { standalone?: 
       what-if simulator
     </a>
   ) : (
-    <Link href="/">what-if simulator</Link>
+    <Link href="/#demo" className={link}>
+      what-if simulator
+    </Link>
   );
   return (
-    <section className="compare" aria-label="Price safety vs reserve safety">
-      {!standalone && (
-        <p className="section-kicker">
-          Price safety is not reserve safety{" "}
-          <span className="muted-text">
-            · <Link href="/compare">how we differ</Link>
-          </span>
-        </p>
-      )}
-      <h2 className="compare-head">They block bad prices. We block unproven reserves and unpaid exits.</h2>
-      <p className="compare-lede">
-        Price guards such as{" "}
-        <a href={STOCKGUARD_URL} target="_blank" rel="noreferrer">
-          StockGuard
-        </a>{" "}
-        stop a Morpho market from lending on a price it can&apos;t trust. ReserveProof stops it from lending against
-        a stock token whose custodian can&apos;t prove it still holds the stock. They fail on different days, so a
-        market needs both.
-      </p>
-
-      <table className="compare-table">
-        <thead>
-          <tr>
-            <th scope="col" />
-            <th scope="col">Price guards (StockGuard)</th>
-            <th scope="col">ReserveProof</th>
-          </tr>
-        </thead>
-        <tbody>
-          {ROWS.map((r) => (
-            <tr key={r.label}>
-              <th scope="row">{r.label}</th>
-              <td data-label="Price guards">{r.price}</td>
-              <td data-label="ReserveProof">{r.reserve}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <div className="mainnet-card compare-stack">
-        <div className="mainnet-head">
-          <span className="pill ok">stack them</span>
-          <span className="value">One constructor: the price guard becomes the base oracle, ReserveProof gates it.</span>
-        </div>
-        <pre className="compare-code mono">
-          {`new SolvencyGatedMorphoOracle(
-    stockGuardOracle,           // base price: already refuses bad prices
-    solvencyOracle, custodianId, TSLA,
-    72 hours, 6 hours, 5000     // freeze cap, poke gap, 50% price after the cap
-);`}
-        </pre>
-        <p className="mainnet-links">
-          See it fail closed: the {whatIf} on the live contracts ·{" "}
-          <a href={`${GITHUB_URL}#re-run-the-morpho-freeze-yourself`} target="_blank" rel="noreferrer">
-            <code>npm run demo:morpho-fork</code>
+    <Section
+      id="compare"
+      kicker={standalone ? undefined : "Price safety is not reserve safety"}
+      title="They block bad prices. We block unproven reserves and unpaid exits."
+      description={
+        <>
+          Price guards such as{" "}
+          <a href={STOCKGUARD_URL} target="_blank" rel="noreferrer" className={link}>
+            StockGuard
           </a>{" "}
-          against the real Morpho Blue on a mainnet fork · <Link href="/risk">curator risk</Link>: which gated markets
-          would freeze, and when · <Link href="/radar">mainnet radar</Link>: every live Morpho market marked would gate,
-          wouldn&apos;t, or copycat
-        </p>
+          stop a Morpho market from lending on a price it can&apos;t trust. ReserveProof stops it from lending against a
+          stock token whose custodian can&apos;t prove it still holds the stock. They fail on different days, so a market
+          needs both.
+        </>
+      }
+      actions={
+        standalone ? undefined : (
+          <Link href="/compare" className="text-sm text-primary underline-offset-4 hover:underline">
+            How we differ →
+          </Link>
+        )
+      }
+    >
+      <div className="hidden overflow-hidden rounded-xl border border-border/70 bg-card/50 md:block">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead className="w-44" />
+              <TableHead className="text-muted-foreground">Price guards (StockGuard)</TableHead>
+              <TableHead className="text-primary">ReserveProof</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {ROWS.map((r) => (
+              <TableRow key={r.label} className="align-top hover:bg-transparent">
+                <TableCell className="py-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {r.label}
+                </TableCell>
+                <TableCell className="py-4 text-sm leading-relaxed text-muted-foreground">{r.price}</TableCell>
+                <TableCell className="bg-primary/[0.03] py-4 text-sm leading-relaxed">{r.reserve}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       </div>
-    </section>
+
+      <div className="space-y-3 md:hidden">
+        {ROWS.map((r) => (
+          <div key={r.label} className="rounded-xl border border-border/70 bg-card/50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{r.label}</p>
+            <p className="mt-3 text-[0.7rem] uppercase tracking-wide text-muted-foreground">Price guards</p>
+            <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">{r.price}</p>
+            <p className="mt-3 text-[0.7rem] uppercase tracking-wide text-primary">ReserveProof</p>
+            <p className="mt-0.5 text-sm leading-relaxed">{r.reserve}</p>
+          </div>
+        ))}
+      </div>
+
+      <Card className="mt-6 border-border/70 bg-card/60">
+        <CardContent className="space-y-4 p-5 md:p-6">
+          <div className="flex flex-wrap items-center gap-3">
+            <StateBadge state="ok">stack them</StateBadge>
+            <p className="text-sm">One constructor: the price guard becomes the base oracle, ReserveProof gates it.</p>
+          </div>
+          <CodeBlock code={STACK_CODE} copyLabel="Copy constructor" />
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            See it fail closed: the {whatIf} on the live contracts ·{" "}
+            <a href={`${GITHUB_URL}#re-run-the-morpho-freeze-yourself`} target="_blank" rel="noreferrer" className={link}>
+              <code className="font-mono text-[0.85em]">npm run demo:morpho-fork</code>
+            </a>{" "}
+            against the real Morpho Blue on a mainnet fork · <Link href="/risk" className={link}>curator risk</Link>: which
+            gated markets would freeze, and when · <Link href="/radar" className={link}>mainnet radar</Link>: every live
+            Morpho market marked would gate, wouldn&apos;t, or copycat
+          </p>
+        </CardContent>
+      </Card>
+    </Section>
   );
 }

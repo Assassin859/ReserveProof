@@ -1,12 +1,15 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
 import { useEffect, useId, useState } from "react";
 import { cn } from "@/lib/utils";
 
 type Square = { id: number; x: number; y: number };
 
-/** Adapted from Magic UI's AnimatedGridPattern (MIT): a faint grid with a few cells fading in and out. */
+/**
+ * Adapted from Magic UI's AnimatedGridPattern (MIT): a faint grid with a few cells fading in and out.
+ * CSS-only animation; each cell jumps to a new spot when its fade cycle ends. Under reduced motion the
+ * global rule stops the animation and the cells stay faintly visible.
+ */
 export function GridPattern({
   className,
   size = 44,
@@ -21,7 +24,6 @@ export function GridPattern({
   squares?: number;
 }) {
   const id = useId().replace(/:/g, "");
-  const reduce = useReducedMotion();
   const [cells, setCells] = useState<Square[]>([]);
 
   useEffect(() => {
@@ -41,25 +43,19 @@ export function GridPattern({
       </defs>
       <rect width="100%" height="100%" fill={`url(#grid-${id})`} />
       <svg x={-1} y={-1} className="overflow-visible">
-        {cells.map((c, i) =>
-          reduce ? (
-            <rect key={c.id} width={size - 1} height={size - 1} x={c.x * size + 1} y={c.y * size + 1} className="fill-primary/[0.06]" strokeWidth="0" />
-          ) : (
-            <motion.rect
-              key={`${c.id}-${c.x}-${c.y}`}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 3, repeat: 1, delay: i * 0.25, repeatType: "reverse" }}
-              onAnimationComplete={() => move(c.id)}
-              width={size - 1}
-              height={size - 1}
-              x={c.x * size + 1}
-              y={c.y * size + 1}
-              className="fill-primary/[0.08]"
-              strokeWidth="0"
-            />
-          )
-        )}
+        {cells.map((c, i) => (
+          <rect
+            key={c.id}
+            width={size - 1}
+            height={size - 1}
+            x={c.x * size + 1}
+            y={c.y * size + 1}
+            className="animate-grid-fade fill-primary/[0.07]"
+            style={{ animationDelay: `${(i * 0.35) % 6}s` }}
+            strokeWidth="0"
+            onAnimationIteration={() => move(c.id)}
+          />
+        ))}
       </svg>
     </svg>
   );
