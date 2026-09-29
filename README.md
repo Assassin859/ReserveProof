@@ -1,7 +1,9 @@
-# ReserveProof
+# ReserveProof: proof of reserves for USDG and Robinhood Stock Tokens
 
 [![CI](https://github.com/Assassin859/ReserveProof/actions/workflows/ci.yml/badge.svg)](https://github.com/Assassin859/ReserveProof/actions/workflows/ci.yml)
 [![Ops epoch](https://github.com/Assassin859/ReserveProof/actions/workflows/ops-epoch.yml/badge.svg)](https://github.com/Assassin859/ReserveProof/actions/workflows/ops-epoch.yml)
+
+`USDG` · `Robinhood Chain` · `Robinhood Stock Tokens (ERC-8056)` · `Morpho Blue` · `Arbitrum`
 
 Open-source proof of reserves and proof of exit for custodians of **USDG** and **Robinhood Stock Tokens**,
 shipped as one modifier any lending market can add: `onlySolvent(asset)`.
@@ -30,6 +32,18 @@ ReserveProof gives them that signal, fail-closed:
 - Merkle-sum liabilities with user inclusion / omission proofs
 - Fail-closed `isSolvent(custodianId, asset)` that payouts and lending can `require`
 - **ExitRight** — bonded withdrawal with on-chain `settle`
+
+**Where it fits: price guards block bad prices; we block unproven reserves and unpaid exits.** A price
+guard (such as [StockGuard](https://arbitrum-singapore.hackquest.io/projects/StockGuard)) refuses to price a
+stock token when the market is closed, a split is mid-flight or the feed is wrong. It can't see a perfectly
+priced token whose custodian has sold the stock behind it. ReserveProof can, and it doesn't judge the price,
+so the two stack in one constructor, with the price guard as the base oracle:
+
+```solidity
+new SolvencyGatedMorphoOracle(stockGuardOracle, solvencyOracle, custodianId, TSLA, 72 hours, 6 hours, 5000);
+```
+
+Side by side: [reserveproof-teal.vercel.app/compare](https://reserveproof-teal.vercel.app/compare).
 
 See [docs/technical-spec.md](docs/technical-spec.md) for the full design.
 

@@ -48,6 +48,7 @@ import {
 } from "../lib/whatif";
 import { SITE_STATS } from "../lib/mainnet";
 import { MainnetSection } from "./MainnetSection";
+import { CompareSection } from "./CompareSection";
 
 type ChainId = 46630 | 421614 | 31337;
 
@@ -840,7 +841,7 @@ export function KopiApp() {
     <div className="shell">
       <header className="hero">
         <div className="hero-copy">
-          <p className="eyebrow">ReserveProof · open-source proof of reserves</p>
+          <p className="eyebrow">ReserveProof · proof of reserves for USDG and Robinhood Stock Tokens · Robinhood Chain</p>
           <h1 className="headline">Proof that your custodian actually holds your stocks and dollars.</h1>
           <p className="lede">
             When a custodian fails, customers find out last. ReserveProof puts the proof on-chain instead: the
@@ -858,6 +859,9 @@ export function KopiApp() {
             </button>
             <Link className="ghost" href="/risk">
               Curator risk
+            </Link>
+            <Link className="ghost" href="/compare">
+              How we differ
             </Link>
             {DEMO_VIDEO_URL && (
               <a className="ghost" href={DEMO_VIDEO_URL} target="_blank" rel="noreferrer">
@@ -958,6 +962,8 @@ export function KopiApp() {
       </header>
 
       <MainnetSection />
+
+      <CompareSection onWhatIf={() => goToScene(SCENE_WHATIF)} />
 
       <p className="section-kicker">
         Live demo: Kopi Wallet on {net.label}{" "}
@@ -1374,7 +1380,7 @@ export function KopiApp() {
           <a href={`${GITHUB_URL}/blob/master/docs/SUBMISSION.md`} target="_blank" rel="noreferrer">
             Submission
           </a>{" "}
-          · <Link href="/risk">Curator risk</Link> · MIT licensed
+          · <Link href="/risk">Curator risk</Link> · <Link href="/compare">How we differ</Link> · MIT licensed
         </span>
         <span>
           {net.label}
