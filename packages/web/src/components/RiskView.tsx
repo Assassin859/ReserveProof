@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { GITHUB_URL, NETWORK_KEYS, type NetworkKey } from "../lib/deployments";
+import { Button } from "./ui/button";
+import { PageHeader } from "./site/PageHeader";
 import type { AssetRisk, ConsumerRisk, FreezeTrigger, RiskReport } from "../lib/risk";
 
 type Loaded = { report?: RiskReport; error?: string };
@@ -402,33 +404,27 @@ export function RiskView() {
     ?.nextPublish;
 
   return (
+    <>
+    <PageHeader
+      eyebrow="ReserveProof · curator risk"
+      title="What would freeze, and when."
+      lede="For vault curators and risk teams: every solvency-gated market on both testnets, the custody proof it depends on, how much room that proof has left, and exactly what would stop it. Everything is read live from the chain every 30 seconds."
+      actions={
+        <>
+          <Button asChild variant="outline" size="sm">
+            <a href={`${GITHUB_URL}/actions/workflows/ops-epoch.yml`} target="_blank" rel="noreferrer">
+              Epoch publisher
+            </a>
+          </Button>
+          <Button asChild variant="ghost" size="sm">
+            <a href="/api/risk?network=robinhoodTestnet" target="_blank" rel="noreferrer">
+              JSON feed
+            </a>
+          </Button>
+        </>
+      }
+    />
     <div className="shell">
-      <header className="risk-hero">
-        <p className="eyebrow">ReserveProof · curator risk</p>
-        <h1 className="headline">What would freeze, and when.</h1>
-        <p className="lede">
-          For vault curators and risk teams: every solvency-gated market on both testnets, the custody proof it
-          depends on, how much room that proof has left, and exactly what would stop it. Everything is read live
-          from the chain every 30 seconds.
-        </p>
-        <div className="cta-row">
-          <Link className="ghost" href="/">
-            ← Live demo
-          </Link>
-          <Link className="ghost" href="/radar">
-            Mainnet radar
-          </Link>
-          <Link className="ghost" href="/status">
-            Status
-          </Link>
-          <a className="ghost" href="/api/risk?network=robinhoodTestnet" target="_blank" rel="noreferrer">
-            JSON feed
-          </a>
-          <a className="ghost" href={`${GITHUB_URL}/actions/workflows/ops-epoch.yml`} target="_blank" rel="noreferrer">
-            Epoch publisher
-          </a>
-        </div>
-      </header>
 
       <section className="live-strip" aria-label="Summary">
         <div className="strip-cell">
@@ -469,19 +465,7 @@ export function RiskView() {
         ))}
       </div>
 
-      <footer className="foot">
-        <span>
-          <Link href="/">Live demo</Link> · <Link href="/radar">Mainnet radar</Link> · <Link href="/verify">Verify</Link> · <Link href="/status">Status</Link> ·{" "}
-          <a href={GITHUB_URL} target="_blank" rel="noreferrer">
-            GitHub
-          </a>{" "}
-          · MIT licensed
-        </span>
-        <span>
-          JSON: <a href="/api/risk?network=robinhoodTestnet">robinhoodTestnet</a> ·{" "}
-          <a href="/api/risk?network=arbitrumSepolia">arbitrumSepolia</a>
-        </span>
-      </footer>
     </div>
+    </>
   );
 }

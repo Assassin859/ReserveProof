@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { GITHUB_URL } from "../lib/deployments";
 import type { HourCell, Level, RunInfo, StatusComponent, StatusReport } from "../lib/status";
+import { Button } from "./ui/button";
+import { PageHeader } from "./site/PageHeader";
 
 const REFRESH_MS = 60_000;
 
@@ -121,33 +123,25 @@ export function StatusView() {
     : [];
 
   return (
+    <>
+    <PageHeader
+      eyebrow="ReserveProof · status"
+      title="Are the proofs up?"
+      lede="Every custody proof on both testnets, the Morpho oracle wrapper, the epoch publisher (every 3 days), the hourly watchtower that re-publishes if a run is missed, and the publisher's gas. Proof health is read from the chain; run history comes from GitHub Actions."
+      actions={
+        <>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/verify">Verify every claim</Link>
+          </Button>
+          <Button asChild variant="ghost" size="sm">
+            <a href="/api/status" target="_blank" rel="noreferrer">
+              JSON feed
+            </a>
+          </Button>
+        </>
+      }
+    />
     <div className="shell">
-      <header className="risk-hero">
-        <p className="eyebrow">ReserveProof · status</p>
-        <h1 className="headline">Are the proofs up?</h1>
-        <p className="lede">
-          Every custody proof on both testnets, the Morpho oracle wrapper, the epoch publisher (every 3 days), the
-          hourly watchtower that re-publishes if a run is missed, and the publisher&apos;s gas. Proof health is read
-          from the chain; run history comes from GitHub Actions.
-        </p>
-        <div className="cta-row">
-          <Link className="ghost" href="/">
-            ← Live demo
-          </Link>
-          <Link className="ghost" href="/verify">
-            Verify every claim
-          </Link>
-          <Link className="ghost" href="/risk">
-            Curator risk
-          </Link>
-          <Link className="ghost" href="/radar">
-            Mainnet radar
-          </Link>
-          <a className="ghost" href="/api/status" target="_blank" rel="noreferrer">
-            JSON feed
-          </a>
-        </div>
-      </header>
 
       {!report && !error && <p className="muted-text">Reading both chains and the run history…</p>}
       {error && <p className="bad-text">Could not load status: {error}</p>}
@@ -296,19 +290,7 @@ export function StatusView() {
         </ul>
       </section>
 
-      <footer className="foot">
-        <span>
-          <Link href="/">Live demo</Link> · <Link href="/risk">Curator risk</Link> · <Link href="/radar">Mainnet radar</Link>{" "}
-          · <Link href="/verify">Verify</Link> ·{" "}
-          <a href={GITHUB_URL} target="_blank" rel="noreferrer">
-            GitHub
-          </a>{" "}
-          · MIT licensed
-        </span>
-        <span>
-          JSON: <a href="/api/status">/api/status</a>
-        </span>
-      </footer>
     </div>
+    </>
   );
 }

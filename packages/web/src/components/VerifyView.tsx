@@ -6,6 +6,8 @@ import { createPublicClient, formatUnits, http, isAddress, type Address } from "
 import forkDrillJson from "../deployments/fork-drill.json";
 import { checkBalance, readLatestEpoch, type BalanceResult } from "../lib/balance";
 import { ASSET_META, GITHUB_URL, NETWORKS, type AssetKind } from "../lib/deployments";
+import { Button } from "./ui/button";
+import { PageHeader } from "./site/PageHeader";
 import { SITE_STATS } from "../lib/mainnet";
 import type { RadarReport } from "../lib/radar";
 import { RPC_URLS } from "../lib/rpc";
@@ -217,30 +219,27 @@ export function VerifyView() {
   const steps = Array.from(new Set(FORK.checks.map((c) => c.step)));
 
   return (
+    <>
+    <PageHeader
+      eyebrow="ReserveProof · verify"
+      title="Check every claim yourself"
+      lede="Each claim in the submission, checked live when this page opens: against the chains, the block explorers and GitHub Actions. The balance proof runs in your browser against a public RPC, not our server. Every card says how to reproduce it on your own machine."
+      actions={
+        <>
+          <Button asChild variant="outline" size="sm">
+            <a href={`${GITHUB_URL}/blob/master/docs/VERIFY.md`} target="_blank" rel="noreferrer">
+              VERIFY.md
+            </a>
+          </Button>
+          <Button asChild variant="ghost" size="sm">
+            <a href="/api/verify" target="_blank" rel="noreferrer">
+              JSON feed
+            </a>
+          </Button>
+        </>
+      }
+    />
     <div className="shell">
-      <header className="risk-hero">
-        <p className="eyebrow">ReserveProof · verify</p>
-        <h1 className="headline">Check every claim yourself</h1>
-        <p className="lede">
-          Each claim in the submission, checked live when this page opens: against the chains, the block explorers and
-          GitHub Actions. The balance proof runs in your browser against a public RPC, not our server. Every card says
-          how to reproduce it on your own machine.
-        </p>
-        <div className="cta-row">
-          <Link className="ghost" href="/">
-            ← Live demo
-          </Link>
-          <Link className="ghost" href="/status">
-            Status
-          </Link>
-          <Link className="ghost" href="/risk">
-            Curator risk
-          </Link>
-          <a className="ghost" href="/api/verify" target="_blank" rel="noreferrer">
-            JSON feed
-          </a>
-        </div>
-      </header>
 
       <section className={`status-banner ${checking ? "" : passed === total ? "ok" : states.includes("fail") ? "down" : "warn"}`} aria-live="polite">
         <strong>{checking ? `Checking… ${passed} of ${total} pass so far` : `${passed} of ${total} checks pass`}</strong>
@@ -403,19 +402,7 @@ export function VerifyView() {
         </>
       )}
 
-      <footer className="foot">
-        <span>
-          <Link href="/">Live demo</Link> · <Link href="/status">Status</Link> · <Link href="/risk">Curator risk</Link> ·{" "}
-          <Link href="/radar">Mainnet radar</Link> ·{" "}
-          <a href={`${GITHUB_URL}/blob/master/docs/VERIFY.md`} target="_blank" rel="noreferrer">
-            VERIFY.md
-          </a>{" "}
-          · MIT licensed
-        </span>
-        <span>
-          JSON: <a href="/api/verify">/api/verify</a>
-        </span>
-      </footer>
     </div>
+    </>
   );
 }

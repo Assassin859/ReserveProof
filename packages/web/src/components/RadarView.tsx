@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { GITHUB_URL } from "../lib/deployments";
+import { Button } from "./ui/button";
+import { PageHeader } from "./site/PageHeader";
 import type { RadarMarket, RadarReport, Verdict, WarningCode } from "../lib/radar";
 
 const REFRESH_MS = 5 * 60_000;
@@ -169,31 +169,20 @@ export function RadarView() {
   const warnTotal = s ? Object.values(s.warnings).reduce((a, b) => a + b, 0) : 0;
 
   return (
-    <div className="shell">
-      <header className="risk-hero">
-        <p className="eyebrow">ReserveProof · mainnet radar</p>
-        <h1 className="headline">Which Morpho markets ReserveProof would gate.</h1>
-        <p className="lede">
-          Every Morpho Blue market on Robinhood Chain mainnet, read live at one block. Markets lending against USDG or
-          an issuer-listed Robinhood Stock Token would freeze on a failed custody proof; tokens that only look like
-          one are flagged as copycats. Sources: the Morpho API for the market list, Robinhood&apos;s official asset
-          registry for which token contracts are real, and the chain itself (Multicall3) for every number.
-        </p>
-        <div className="cta-row">
-          <Link className="ghost" href="/">
-            ← Live demo
-          </Link>
-          <Link className="ghost" href="/risk">
-            Curator risk
-          </Link>
-          <Link className="ghost" href="/compare">
-            How we differ
-          </Link>
-          <a className="ghost" href="/api/radar" target="_blank" rel="noreferrer">
+    <>
+    <PageHeader
+      eyebrow="ReserveProof · mainnet radar"
+      title="Which Morpho markets ReserveProof would gate."
+      lede="Every Morpho Blue market on Robinhood Chain mainnet, read live at one block. Markets lending against USDG or an issuer-listed Robinhood Stock Token would freeze on a failed custody proof; tokens that only look like one are flagged as copycats. Sources: the Morpho API for the market list, Robinhood's official asset registry for which token contracts are real, and the chain itself (Multicall3) for every number."
+      actions={
+        <Button asChild variant="ghost" size="sm">
+          <a href="/api/radar" target="_blank" rel="noreferrer">
             JSON feed
           </a>
-        </div>
-      </header>
+        </Button>
+      }
+    />
+    <div className="shell">
 
       <section className="live-strip" aria-label="Summary">
         <div className="strip-cell">
@@ -341,19 +330,7 @@ export function RadarView() {
         </ul>
       </section>
 
-      <footer className="foot">
-        <span>
-          <Link href="/">Live demo</Link> · <Link href="/risk">Curator risk</Link> · <Link href="/compare">How we differ</Link>{" "}
-          · <Link href="/verify">Verify</Link> · <Link href="/status">Status</Link> ·{" "}
-          <a href={GITHUB_URL} target="_blank" rel="noreferrer">
-            GitHub
-          </a>{" "}
-          · MIT licensed
-        </span>
-        <span>
-          JSON: <a href="/api/radar">/api/radar</a>
-        </span>
-      </footer>
     </div>
+    </>
   );
 }

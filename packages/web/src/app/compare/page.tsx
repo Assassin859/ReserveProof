@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { CompareSection } from "../../components/CompareSection";
-import { GITHUB_URL } from "../../lib/deployments";
+import { PageHeader } from "../../components/site/PageHeader";
 
 const title = "Price safety vs reserve safety: ReserveProof and StockGuard";
 const description =
@@ -16,35 +15,15 @@ export const metadata: Metadata = {
 
 export default function ComparePage() {
   return (
-    <div className="shell">
-      <header className="risk-hero">
-        <p className="eyebrow">ReserveProof · how we differ</p>
-        <h1 className="headline">Price safety is not reserve safety.</h1>
-        <div className="cta-row">
-          <Link className="ghost" href="/">
-            ← Live demo
-          </Link>
-          <Link className="ghost" href="/risk">
-            Curator risk
-          </Link>
-          <Link className="ghost" href="/radar">
-            Mainnet radar
-          </Link>
-        </div>
-      </header>
-
-      <CompareSection standalone />
-
-      <footer className="foot">
-        <span>
-          <Link href="/">Live demo</Link> · <Link href="/risk">Curator risk</Link> ·{" "}
-          <Link href="/radar">Mainnet radar</Link> ·{" "}
-          <a href={GITHUB_URL} target="_blank" rel="noreferrer">
-            GitHub
-          </a>{" "}
-          · MIT licensed
-        </span>
-      </footer>
-    </div>
+    <>
+      <PageHeader
+        eyebrow="ReserveProof · how we differ"
+        title="Price safety is not reserve safety."
+        lede="A price guard can't see a perfectly priced token whose custodian has sold the stock behind it. ReserveProof can, and it doesn't judge the price, so the two stack in one constructor."
+      />
+      <div className="container py-12">
+        <CompareSection standalone />
+      </div>
+    </>
   );
 }
