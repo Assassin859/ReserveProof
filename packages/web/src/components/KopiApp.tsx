@@ -1380,7 +1380,8 @@ export function KopiApp() {
           <a href={`${GITHUB_URL}/blob/master/docs/SUBMISSION.md`} target="_blank" rel="noreferrer">
             Submission
           </a>{" "}
-          · <Link href="/risk">Curator risk</Link> · <Link href="/compare">How we differ</Link> · MIT licensed
+          · <Link href="/risk">Curator risk</Link> · <Link href="/radar">Mainnet radar</Link> ·{" "}
+          <Link href="/compare">How we differ</Link> · MIT licensed
         </span>
         <span>
           {net.label}

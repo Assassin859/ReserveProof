@@ -14,7 +14,7 @@ Read on chain from Robinhood Chain mainnet at block 75,032,783 (28 Sep 2026) by
 | | |
 |---|---|
 | USDG in circulation on Robinhood Chain | **675.5M USDG** |
-| Stock and ETF tokens used as Morpho collateral (ERC-8056 tokens only; stock tokens never posted on Morpho are not counted) | **50 tokens, $158.3M** of total supply (SPY $22.9M, NVDA $19.1M, SPCX $12.1M, TSLA $5.1M, AAPL $5.1M, …) |
+| Stock and ETF tokens used as Morpho collateral (ERC-8056 tokens listed in Robinhood's official asset registry, and all 50 are; stock tokens never posted on Morpho are not counted) | **50 tokens, $158.3M** of total supply (SPY $22.9M, NVDA $19.1M, SPCX $12.1M, TSLA $5.1M, AAPL $5.1M, …) |
 | Morpho Blue markets lending USDG against those tokens | **167 of 287 markets**: **745,012 USDG** supplied, **675,019 USDG** borrowed, **$1.72M** of stock tokens posted as collateral |
 | Reserve-proof oracles behind those markets | **None found.** Of the 167 distinct oracles, 113 are Morpho's standard Chainlink-style oracle reading price feeds only (no feed describes a reserve proof); the other 54 are custom contracts we couldn't classify. Morpho asks its oracle only for `price()` |
 
@@ -40,7 +40,19 @@ Curators get a live risk view of every gated market at [/risk](https://reservepr
 - coverage against the 103% floor, and how far reserves can fall before the proof fails;
 - time until the proof goes stale, against the next scheduled publish;
 - open disputes, challenges and exit claims;
-- which consumers would freeze, including the Morpho wrapper's freeze clock.
+- which consumers would freeze, including the Morpho wrapper's freeze clock;
+- for stock tokens, the live ERC-8056 multiplier against the one committed in the epoch, and any scheduled
+  change (the exact `MULTIPLIER_DRIFT` trigger).
+
+The [mainnet radar](https://reserveproof-teal.vercel.app/radar) (JSON at `/api/radar`) lists every Morpho
+market on Robinhood Chain mainnet, live. Each is marked **would gate** (USDG or a stock token listed in
+Robinhood's official asset registry), **wouldn't** (crypto collateral) or **reject** (a copycat). It also
+flags pending corporate actions, chain-vs-registry multiplier mismatches, outlier oracle prices and
+reverting oracles.
+
+At block 75,749,646 it showed 179 would-gate markets, with 707K USDG lent and 682K borrowed. It also
+showed 6 markets lending fake "USDG". One of the fakes copies Paxos's exact name, "Global Dollar", with 0
+decimals.
 
 **Every failed proof blocks.** The oracle reports only its first failing check (`STALE`, missing samples
 and a deactivated custodian come before `LIVE_SHORT`), so ignoring any reason would let a drain hide
@@ -135,7 +147,7 @@ Side-by-side table on the live site: [/compare](https://reserveproof-teal.vercel
 | Chainlink PoR | Feed-style reserve attestations; not full user-verifiable liabilities + gated composers |
 | Summa | Strong PoL ideas; we ship open contracts + CLI + fail-closed oracle for stock-token / USDG custodians |
 | Accountable | Closed / productized; we stay open-source, dual-chain allocations, ERC-8056 multiplier drift, ExitRight |
-| StockGuard (price guard, this buildathon) | Blocks bad prices (market closed, split mid-flight, wrong feed, copycat token); we block unproven reserves and unpaid exits. Complementary: our Morpho wrapper takes a price guard as its base oracle ([/compare](https://reserveproof-teal.vercel.app/compare)) |
+| StockGuard (price guard, this buildathon) | Blocks bad prices (market closed, split mid-flight, wrong feed, copycat token); we block unproven reserves and unpaid exits. Complementary: our Morpho wrapper takes a price guard as its base oracle ([/compare](https://reserveproof-teal.vercel.app/compare)). Their Radar maps markets by price risk; [ours](https://reserveproof-teal.vercel.app/radar) maps them by custody: which would freeze on a failed proof, and which are copycats with no custodian at all |
 
 ## Business model
 
@@ -190,6 +202,7 @@ Persona: **Kopi Wallet** (fictional SEA custodian). Everything below runs on the
 | 45–85s | 4 What-if simulator | Drain → `LIVE_SHORT`, skip 8 days → `STALE`, stock split → `MULTIPLIER_DRIFT`, fraud dispute → `DISPUTED`; `GatedPayout` and the lending vault (borrow USDG, withdraw collateral while in debt) flip from Allowed to `Insolvent (reason)` in every scenario, while repaying and debt-free withdrawal stay open. The Morpho oracle row goes from `250 USDG per mTSLA` to `Insolvent (reason)` in all four scenarios |
 | 85–95s | 5 ExitRight | Live bonded claim opened by the demo user and settled by the operator, with explorer links |
 | (optional) | How we differ (`/compare`) | "They block bad prices. We block unproven reserves and unpaid exits." Price guards vs ReserveProof side by side, and the one-constructor stack with a price guard as the Morpho base oracle |
+| (optional) | Mainnet radar (`/radar`) | Every live Morpho market on Robinhood Chain mainnet: 179 would-gate markets (707K USDG lent), filter to "reject" to show the 6 markets lending fake "USDG", one named exactly like Paxos's "Global Dollar" |
 | (optional) | Curator risk (`/risk`) | Both chains side by side: 200% coverage vs the 103% floor, "48.5% can go before LIVE_SHORT", stale in ~7 days against the next publish on the 3-day schedule, no open disputes, and all 8 gated consumers open, with what each would freeze and the Morpho wrapper's 72h clock |
 | 95–110s | Morpho (code + terminal) | `SolvencyGatedMorphoOracle` in one constructor line; `forge test` runs `MorphoIntegration` against the real Morpho Blue core: a drain hidden behind a fresh unsampled epoch, `STALE` or a deactivated custodian still blocks borrow, while repay and lender withdraw work; a pre-started clock buys nothing; after 72 hours of one poked incident, `price()` returns 50% of the base and an underwater position is liquidated |
 

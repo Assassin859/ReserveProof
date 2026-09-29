@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { createPublicClient, formatUnits, http, type Address } from "viem";
 import { assetConfigAbi, liabilityLedgerAbi, reserveSamplerAbi, solvencyOracleAbi } from "../lib/abis";
@@ -161,14 +162,15 @@ export function MainnetSection() {
               {new Date(m.timestamp).toUTCString().slice(5, 16)} ·{" "}
               <a href="https://github.com/Assassin859/ReserveProof/blob/master/docs/market-size.json" target="_blank" rel="noreferrer">
                 method ↗
-              </a>
+              </a>{" "}
+              · <Link href="/radar">every market, live →</Link>
             </span>
           </p>
           <div className="live-strip numbers">
             <div className="strip-cell">
               <span className="label">Stock tokens used as Morpho collateral</span>
               <span className="big">{usd(m.stockSupplyUsd)}</span>
-              <span className="sub">total supply of {m.stockTokens} stock and ETF tokens</span>
+              <span className="sub">total supply of {m.stockTokens} issuer-listed stock and ETF tokens</span>
             </div>
             <div className="strip-cell">
               <span className="label">USDG in circulation</span>

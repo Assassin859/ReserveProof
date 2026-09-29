@@ -2,7 +2,8 @@
  * Read-only snapshot of the custodial-asset market on Robinhood Chain mainnet, for the pitch.
  * Market ids come from the Morpho API (discovery only); every number is then read on chain at one
  * block: token supplies, Morpho Blue market totals, collateral held by Morpho, and oracle prices.
- * A collateral token counts as a Robinhood stock token only if it answers ERC-8056 uiMultiplier().
+ * A collateral token counts as a Robinhood stock token only if it answers ERC-8056 uiMultiplier() and its
+ * contract is listed in Robinhood's asset registry (api.robinhood.com/rhj/assets); copycats are excluded.
  *
  *   npm run market:size          # writes docs/market-size.json
  */
@@ -14,6 +15,7 @@ const RPC = process.env.ROBINHOOD_MAINNET_RPC || "https://rpc.mainnet.chain.robi
 const MORPHO = "0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010";
 const USDG = "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168";
 const MORPHO_API = "https://api.morpho.org/graphql";
+const REGISTRY_API = "https://api.robinhood.com/rhj/assets";
 const OUT = path.join(__dirname, "..", "docs", "market-size.json");
 
 const MORPHO_ABI = [
@@ -53,6 +55,19 @@ async function marketIds(): Promise<string[]> {
   return body.data.markets.items.map((m: { marketId: string }) => m.marketId);
 }
 
+/** Lowercase contract addresses of every chain-4663 deployment in Robinhood's official asset registry. */
+async function registryAddresses(): Promise<Set<string>> {
+  const res = await fetch(REGISTRY_API, { headers: { accept: "application/json" } });
+  if (!res.ok) throw new Error(`Robinhood registry: HTTP ${res.status}`);
+  const body = (await res.json()) as { assets?: { deployments?: { contractAddress?: string; chainId?: number }[] }[] };
+  const out = new Set<string>();
+  for (const a of body.assets ?? []) {
+    for (const d of a.deployments ?? []) if (d.chainId === 4663 && d.contractAddress) out.add(d.contractAddress.toLowerCase());
+  }
+  if (out.size === 0) throw new Error("Robinhood registry lists no chain 4663 deployments");
+  return out;
+}
+
 async function inBatches<T, R>(items: T[], size: number, fn: (t: T) => Promise<R>): Promise<R[]> {
   const out: R[] = [];
   for (let i = 0; i < items.length; i += size) out.push(...(await Promise.all(items.slice(i, i + size).map(fn))));
@@ -68,7 +83,8 @@ async function main() {
   const blockTag = head.number;
   const morpho = new Contract(MORPHO, MORPHO_ABI, provider);
 
-  const ids = await marketIds();
+  const [ids, registry] = await Promise.all([marketIds(), registryAddresses()]);
+  const unlisted: { symbol: string; address: string }[] = [];
   const markets = await inBatches(ids, 20, async (id) => {
     const p = await morpho.idToMarketParams(id, { blockTag });
     const s = await morpho.market(id, { blockTag });
@@ -94,10 +110,12 @@ async function main() {
       t.totalSupply({ blockTag }).catch(() => 0n),
       t.balanceOf(MORPHO, { blockTag }).catch(() => 0n),
     ]);
-    const stock = await t.uiMultiplier({ blockTag }).then(
+    const erc8056 = await t.uiMultiplier({ blockTag }).then(
       () => true,
       () => false
     );
+    if (erc8056 && !registry.has(addr)) unlisted.push({ symbol, address: addr });
+    const stock = erc8056 && registry.has(addr);
     tokens.set(addr, { address: addr, symbol, decimals: Number(decimals), totalSupply, inMorpho, stock });
   });
 
@@ -197,9 +215,17 @@ async function main() {
     timestamp: new Date(head.timestamp * 1000).toISOString(),
     method:
       "Morpho market ids from api.morpho.org (discovery only); all figures read on chain at `block`. " +
-      "Stock tokens = tokens used as Morpho collateral that answer ERC-8056 uiMultiplier() (stock tokens never " +
-      "used as Morpho collateral are not counted). USD prices = the market's own " +
+      "Stock tokens = tokens used as Morpho collateral that answer ERC-8056 uiMultiplier() and are listed in " +
+      "Robinhood's asset registry (see `registry`; stock tokens never used as Morpho collateral are not counted). " +
+      "USD prices = the market's own " +
       "Morpho oracle price() in USDG (1 USDG = $1). Stocks without an answering oracle are listed unpriced.",
+    registry: {
+      source: REGISTRY_API,
+      checkedAt: new Date().toISOString(),
+      listedDeployments: registry.size,
+      stockTokensListed: stocks.length,
+      unlistedErc8056Excluded: unlisted,
+    },
     usdg: { address: USDG, totalSupply: Number(formatUnits(usdgSupply, 6)) },
     stockTokens: {
       count: stocks.length,
@@ -222,6 +248,10 @@ async function main() {
   fs.writeFileSync(OUT, JSON.stringify(doc, null, 2) + "\n");
   console.log(`block ${doc.block} (${doc.timestamp})`);
   console.log(`USDG supply: ${doc.usdg.totalSupply.toLocaleString("en-US")}`);
+  console.log(
+    `Registry: ${registry.size} listed deployments; ${unlisted.length} unlisted ERC-8056 collateral excluded` +
+      (unlisted.length ? ` (${unlisted.map((u) => u.symbol).join(", ")})` : "")
+  );
   console.log(
     `Stock tokens: ${stocks.length} (${priced.length} priced), supply $${doc.stockTokens.totalSupplyUsd.toLocaleString("en-US")}, ` +
       `in Morpho $${doc.stockTokens.heldByMorphoUsd.toLocaleString("en-US")}`

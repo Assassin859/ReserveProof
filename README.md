@@ -18,7 +18,8 @@ raw output in [`docs/market-size.json`](docs/market-size.json)):
 
 - **675.5M USDG** in circulation.
 - **50 stock and ETF tokens are used as Morpho collateral**, with **$158.3M** of total supply between them
-  (ERC-8056 tokens only; stock tokens never posted on Morpho aren't counted).
+  (ERC-8056 tokens whose contract is listed in Robinhood's official asset registry, and all 50 are; stock
+  tokens never posted on Morpho aren't counted).
 - **167 Morpho Blue markets** lend USDG against those tokens: **745,012 USDG** supplied, **675,019 USDG**
   borrowed.
 - **We found no reserve-proof oracle behind any of them.** Of the 167 distinct market oracles, 113 are
@@ -43,7 +44,9 @@ so the two stack in one constructor, with the price guard as the base oracle:
 new SolvencyGatedMorphoOracle(stockGuardOracle, solvencyOracle, custodianId, TSLA, 72 hours, 6 hours, 5000);
 ```
 
-Side by side: [reserveproof-teal.vercel.app/compare](https://reserveproof-teal.vercel.app/compare).
+Side by side: [reserveproof-teal.vercel.app/compare](https://reserveproof-teal.vercel.app/compare). Every
+live mainnet market, marked would gate / wouldn't / copycat:
+[reserveproof-teal.vercel.app/radar](https://reserveproof-teal.vercel.app/radar).
 
 See [docs/technical-spec.md](docs/technical-spec.md) for the full design.
 
@@ -261,7 +264,32 @@ seconds. For each custody proof it shows:
 It also lists every solvency-gated consumer (the payout, the lend/withdraw composer, the lending vault and
 the Morpho oracle wrapper). For each one it shows what freezes, what stays open, what is exposed and the
 wrapper's freeze clock, plus a "freezes if" list with the concrete thresholds. The same data is a JSON feed
-at `/api/risk?network=robinhoodTestnet` (or `arbitrumSepolia`) for curators who want to poll it.
+at `/api/risk?network=robinhoodTestnet` (or `arbitrumSepolia`) for curators who want to poll it. Stock-token
+cards also show the ERC-8056 multiplier: live `uiMultiplier` against the one committed in the epoch, plus any
+scheduled change (`newUIMultiplier` with a future `effectiveAt`), which is exactly when the oracle returns
+`MULTIPLIER_DRIFT`.
+
+**Mainnet radar:** [reserveproof-teal.vercel.app/radar](https://reserveproof-teal.vercel.app/radar) reads
+every Morpho Blue market on Robinhood Chain mainnet, live. It uses the Morpho API only for the market list,
+Robinhood's official asset registry (`api.robinhood.com/rhj/assets`) for which token contracts are real,
+and Multicall3 at one block for every number. Each market is marked:
+- **would gate:** USDG or issuer-listed stock-token collateral. At block 75,749,646 that was 179 markets,
+  with 707K USDG lent and 682K borrowed;
+- **wouldn't gate:** crypto collateral, where there is no custodian to prove;
+- **reject:** a copycat collateral or loan token. At that block, 6 markets lent one of two fake "USDG"
+  tokens. One, [`0x8c86…7796`](https://robinhoodchain.blockscout.com/address/0x8c864e587d054cba3fc8d79054a700dc93988796),
+  copies Paxos's exact name "Global Dollar" but has 0 decimals.
+
+It also flags:
+- pending corporate actions (an on-chain `newUIMultiplier` with a future `effectiveAt`, or a registry
+  `pendingMultiplier`);
+- multiplier mismatches between the chain and the registry;
+- oracle prices more than 5% from the median for the same collateral and loan pair (a multiplier applied
+  twice, or the wrong feed);
+- reverting oracles.
+
+None of these markets is gated today; the verdicts describe what our wrapper would do. The JSON is at
+`/api/radar`, cached for 5 minutes.
 
 After redeploying, publishing or changing contracts, run `npm run web:sync` to refresh the UI's ABIs,
 testnet address books, liability books and ExitRight record.

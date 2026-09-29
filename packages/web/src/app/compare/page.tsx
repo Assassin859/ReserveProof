@@ -27,6 +27,9 @@ export default function ComparePage() {
           <Link className="ghost" href="/risk">
             Curator risk
           </Link>
+          <Link className="ghost" href="/radar">
+            Mainnet radar
+          </Link>
         </div>
       </header>
 
@@ -35,6 +38,7 @@ export default function ComparePage() {
       <footer className="foot">
         <span>
           <Link href="/">Live demo</Link> · <Link href="/risk">Curator risk</Link> ·{" "}
+          <Link href="/radar">Mainnet radar</Link> ·{" "}
           <a href={GITHUB_URL} target="_blank" rel="noreferrer">
             GitHub
           </a>{" "}

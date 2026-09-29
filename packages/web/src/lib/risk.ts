@@ -69,6 +69,25 @@ export type AssetRisk = {
   } | null;
   exit: { exitDefault: boolean; openClaims: number; nextDeadline: number | null } | null;
   isStockToken: boolean;
+  /** Which token contract this is, in plain words (demo mock, testnet token, ...). */
+  identity: string;
+  /** ERC-8056 multipliers, for stock tokens with a published epoch. */
+  multiplier: {
+    live: number | null;
+    committed: number | null;
+    pending: number | null;
+    effectiveAt: number | null;
+    /** live differs from the epoch's snapshot, or a getter reverts: the oracle returns MULTIPLIER_DRIFT now. */
+    drift: boolean;
+    /** effectiveAt is in the future with a different new multiplier: also MULTIPLIER_DRIFT now. */
+    pendingChange: boolean;
+  } | null;
+};
+
+const IDENTITY: Record<AssetKind, string> = {
+  stock: "Mock ERC-8056 stock token we deployed for the demo (same getters as a Robinhood Stock Token)",
+  usdg: "Paxos test USDG on this testnet (mainnet USDG is 0x5fc5…d168)",
+  tsla: "Robinhood's testnet TSLA (the official asset registry lists mainnet contracts only)",
 };
 
 export type ConsumerKind = "payout" | "lendWithdraw" | "vault" | "morpho";
@@ -130,6 +149,12 @@ const BPS = BigInt(10_000);
 const ZERO = BigInt(0);
 const EXIT_SCAN = 50;
 const ORACLE_PRICE_ABI = parseAbi(["function price() view returns (uint256)"]);
+const ERC8056_ABI = parseAbi([
+  "function uiMultiplier() view returns (uint256)",
+  "function newUIMultiplier() view returns (uint256)",
+  "function effectiveAt() view returns (uint256)",
+]);
+const mul = (x: bigint | null) => (x === null ? null : Number(formatUnits(x, 18)));
 
 function amt(raw: bigint, decimals: number): Amount {
   return { raw: raw.toString(), value: Number(formatUnits(raw, decimals)) };
@@ -246,12 +271,14 @@ export async function loadRisk(key: NetworkKey): Promise<RiskReport> {
       disputes: null,
       exit: null,
       isStockToken: Boolean(cfg?.isStockToken),
+      identity: IDENTITY[kind],
+      multiplier: null,
     };
     if (!published || !epochId) return base;
 
     const [epoch, live, sMin, effective, isDisputed, openDisputes, equivocated, openChallenges, queueLength, overdue, windowSec, exitDefault] =
       await Promise.all([
-        read<{ totalLiability: bigint; allocation: bigint; committedAt: bigint }>(`${label} epoch`, c.LiabilityLedger, liabilityLedgerAbi, "getEpoch", [...args, epochId]),
+        read<{ totalLiability: bigint; allocation: bigint; committedAt: bigint; multiplierSnapshot: bigint }>(`${label} epoch`, c.LiabilityLedger, liabilityLedgerAbi, "getEpoch", [...args, epochId]),
         read<bigint>(`${label} liveReserves`, c.ReserveSampler, reserveSamplerAbi, "liveReserves", args),
         read<readonly [bigint, bigint]>(`${label} sampleMin`, c.ReserveSampler, reserveSamplerAbi, "sampleMin", [...args, epochId]),
         read<bigint>(`${label} effectiveReserves`, c.ReserveSampler, reserveSamplerAbi, "effectiveReserves", [...args, epochId]),
@@ -289,6 +316,25 @@ export async function loadRisk(key: NetworkKey): Promise<RiskReport> {
       const staleAt = committedAt + maxOracleAge;
       const nextPublish = nextCronRun(nowSec);
       base.staleness = { committedAt, maxOracleAge, staleAt, nextPublish, marginSec: staleAt - nextPublish };
+    }
+
+    if (base.isStockToken) {
+      const [liveMul, newMul, effAt] = await Promise.all([
+        read<bigint>(`${label} uiMultiplier`, address, ERC8056_ABI, "uiMultiplier"),
+        read<bigint>(`${label} newUIMultiplier`, address, ERC8056_ABI, "newUIMultiplier"),
+        read<bigint>(`${label} effectiveAt`, address, ERC8056_ABI, "effectiveAt"),
+      ]);
+      const snapshot = epoch ? epoch.multiplierSnapshot : null;
+      const pendingChange =
+        effAt !== null && Number(effAt) > nowSec && newMul !== null && newMul !== ZERO && newMul !== liveMul;
+      base.multiplier = {
+        live: mul(liveMul),
+        committed: mul(snapshot),
+        pending: newMul !== null && newMul !== ZERO ? mul(newMul) : null,
+        effectiveAt: effAt !== null && effAt > ZERO ? Number(effAt) : null,
+        drift: liveMul === null || newMul === null || effAt === null || (snapshot !== null && liveMul !== snapshot),
+        pendingChange,
+      };
     }
 
     base.disputes = {
@@ -495,7 +541,28 @@ export async function loadRisk(key: NetworkKey): Promise<RiskReport> {
         a.exit.exitDefault
       );
     }
-    if (a.isStockToken) push("A stock split or multiplier change before the next epoch (MULTIPLIER_DRIFT)", null, false);
+    const m = a.multiplier;
+    if (m?.drift) {
+      push(
+        m.live === null
+          ? `${a.label} ERC-8056 getters revert (MULTIPLIER_DRIFT)`
+          : `${a.label} uiMultiplier is ${m.live}, but the epoch committed ${m.committed ?? "?"} (MULTIPLIER_DRIFT until the custodian recommits)`,
+        null,
+        true
+      );
+    } else if (m?.pendingChange && m.effectiveAt) {
+      push(
+        `${a.label} multiplier change ${m.live} → ${m.pending} scheduled for ${utc(m.effectiveAt)} (MULTIPLIER_DRIFT from now until the custodian recommits after it)`,
+        m.effectiveAt,
+        true
+      );
+    } else if (a.isStockToken) {
+      push(
+        `${a.label} schedules a split or multiplier change (newUIMultiplier with a future effectiveAt) before the next epoch (MULTIPLIER_DRIFT)`,
+        null,
+        false
+      );
+    }
   }
 
   return {

@@ -37,6 +37,10 @@ function until(at: number, now: number) {
   return at > now ? `in ${dur(at - now)}` : `${dur(now - at)} ago`;
 }
 
+function multiplier(n: number) {
+  return n.toLocaleString("en-US", { maximumFractionDigits: 9 });
+}
+
 function short(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
@@ -62,6 +66,7 @@ function AssetCard({ a, now, gatedBy }: { a: AssetRisk; now: number; gatedBy: st
           <strong>{a.label}</strong>
           <span className="muted-text">not published on this chain</span>
         </div>
+        <p className="risk-identity">{a.identity}</p>
       </div>
     );
   }
@@ -69,6 +74,7 @@ function AssetCard({ a, now, gatedBy }: { a: AssetRisk; now: number; gatedBy: st
   const st = a.staleness;
   const d = a.disputes;
   const x = a.exit;
+  const mu = a.multiplier;
   const liveStale = st ? st.staleAt - now : null;
   const liveMargin = st ? st.staleAt - Math.max(st.nextPublish, now) : null;
   return (
@@ -91,6 +97,7 @@ function AssetCard({ a, now, gatedBy }: { a: AssetRisk; now: number; gatedBy: st
           <span className="muted-text">No gated consumer on this chain</span>
         )}
       </p>
+      <p className="risk-identity">{a.identity}</p>
 
       {cov && (
         <div className="risk-block">
@@ -122,6 +129,37 @@ function AssetCard({ a, now, gatedBy }: { a: AssetRisk; now: number; gatedBy: st
               {cov.samples} / {cov.minSamples} required
             </span>
           </div>
+        </div>
+      )}
+
+      {mu && (
+        <div className={`risk-block ${mu.drift || mu.pendingChange ? "risk-warn" : ""}`}>
+          <div className="risk-row">
+            <span className="label">Multiplier (ERC-8056)</span>
+            <span className={mu.drift || mu.pendingChange ? "bad-text" : "ok-text"}>
+              {mu.drift
+                ? "drift: MULTIPLIER_DRIFT now"
+                : mu.pendingChange
+                  ? "change pending: MULTIPLIER_DRIFT now"
+                  : "matches the epoch"}
+            </span>
+          </div>
+          <div className="risk-kv">
+            <span>Live uiMultiplier</span>
+            <span className="mono">{mu.live === null ? "reverts" : multiplier(mu.live)}</span>
+            <span>Committed in epoch</span>
+            <span className={`mono ${mu.drift ? "bad-text" : ""}`}>{mu.committed === null ? "—" : multiplier(mu.committed)}</span>
+            <span>Scheduled change</span>
+            <span className={`mono ${mu.pendingChange ? "bad-text" : ""}`}>
+              {mu.pendingChange && mu.pending !== null && mu.effectiveAt
+                ? `→ ${multiplier(mu.pending)} at ${utc(mu.effectiveAt)} (${until(mu.effectiveAt, now)})`
+                : "none"}
+            </span>
+          </div>
+          <p className="risk-note">
+            Only the registry-listed contract is ever gated; a copycat or unlisted token never is. See{" "}
+            <Link href="/radar">the mainnet radar</Link>.
+          </p>
         </div>
       )}
 
@@ -377,6 +415,9 @@ export function RiskView() {
           <Link className="ghost" href="/">
             ← Live demo
           </Link>
+          <Link className="ghost" href="/radar">
+            Mainnet radar
+          </Link>
           <a className="ghost" href="/api/risk?network=robinhoodTestnet" target="_blank" rel="noreferrer">
             JSON feed
           </a>
@@ -427,7 +468,7 @@ export function RiskView() {
 
       <footer className="foot">
         <span>
-          <Link href="/">Live demo</Link> ·{" "}
+          <Link href="/">Live demo</Link> · <Link href="/radar">Mainnet radar</Link> ·{" "}
           <a href={GITHUB_URL} target="_blank" rel="noreferrer">
             GitHub
           </a>{" "}

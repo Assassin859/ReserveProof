@@ -1,6 +1,7 @@
 import { defineChain } from "viem";
 import mainnetJson from "../deployments/robinhoodMainnet.json";
 import statsJson from "../deployments/site-stats.json";
+import { MAINNET_RPC_URL } from "./rpc";
 import type { Deployment, SiteStats } from "./types";
 
 /** Robinhood Chain mainnet (4663). Read-only: the site never asks a wallet to switch here. */
@@ -9,10 +10,13 @@ export const robinhoodMainnet = defineChain({
   name: "Robinhood Chain",
   nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
   rpcUrls: {
-    default: { http: [process.env.NEXT_PUBLIC_RH_MAINNET_RPC || "https://rpc.mainnet.chain.robinhood.com"] },
+    default: { http: [MAINNET_RPC_URL] },
   },
   blockExplorers: {
     default: { name: "Blockscout", url: "https://robinhoodchain.blockscout.com" },
+  },
+  contracts: {
+    multicall3: { address: "0xcA11bde05977b3631167028862bE2a173976CA11" },
   },
 });
 

@@ -106,7 +106,8 @@ export function CompareSection({ standalone = false, onWhatIf }: { standalone?: 
             <code>npm run demo:morpho-fork</code>
           </a>{" "}
           against the real Morpho Blue on a mainnet fork · <Link href="/risk">curator risk</Link>: which gated markets
-          would freeze, and when
+          would freeze, and when · <Link href="/radar">mainnet radar</Link>: every live Morpho market marked would gate,
+          wouldn&apos;t, or copycat
         </p>
       </div>
     </section>

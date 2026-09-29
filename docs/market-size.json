@@ -2,7 +2,14 @@
   "chain": "Robinhood Chain mainnet (4663)",
   "block": 75032783,
   "timestamp": "2026-09-28T19:01:58.000Z",
-  "method": "Morpho market ids from api.morpho.org (discovery only); all figures read on chain at `block`. Stock tokens = tokens used as Morpho collateral that answer ERC-8056 uiMultiplier() (stock tokens never used as Morpho collateral are not counted). USD prices = the market's own Morpho oracle price() in USDG (1 USDG = $1). Stocks without an answering oracle are listed unpriced.",
+  "method": "Morpho market ids from api.morpho.org (discovery only); all figures read on chain at `block`. Stock tokens = tokens used as Morpho collateral that answer ERC-8056 uiMultiplier() and are listed in Robinhood's asset registry (see `registry`; stock tokens never used as Morpho collateral are not counted). USD prices = the market's own Morpho oracle price() in USDG (1 USDG = $1). Stocks without an answering oracle are listed unpriced.",
+  "registry": {
+    "source": "https://api.robinhood.com/rhj/assets",
+    "checkedAt": "2026-09-29T15:10:00.000Z",
+    "listedDeployments": 195,
+    "stockTokensListed": 50,
+    "unlistedErc8056Excluded": []
+  },
   "usdg": {
     "address": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
     "totalSupply": 675505342.14712

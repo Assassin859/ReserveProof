@@ -946,6 +946,31 @@ a.sub:hover {
   margin-top: 0.75rem;
 }
 
+.risk-identity {
+  margin: 0.3rem 0 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.risk-block.risk-warn {
+  border-top: 1px solid var(--bad);
+  background: #1c1412;
+  margin-left: -0.95rem;
+  margin-right: -0.95rem;
+  padding: 0.6rem 0.95rem;
+}
+
+.risk-note {
+  margin: 0.45rem 0 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.risk-note a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
 /* Price guards vs ReserveProof (home section and /compare) */
 .compare {
   margin-bottom: 1.75rem;
@@ -1069,6 +1094,183 @@ a.sub:hover {
   .compare-table tr:last-child th,
   .compare-table tr:last-child td {
     border-bottom: none;
+  }
+}
+
+/* /radar: mainnet Morpho radar */
+.radar-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 1.25rem 0 0.75rem;
+}
+
+.radar-filter {
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--muted);
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.25rem 0.7rem;
+  cursor: pointer;
+}
+
+.radar-filter:hover {
+  color: var(--text);
+}
+
+.radar-filter.on {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+  background: #1f1b12;
+}
+
+.radar-meta {
+  margin-left: auto;
+}
+
+.radar-meta a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.radar-table td:first-child {
+  min-width: 13rem;
+}
+
+.radar-table td:last-child {
+  width: 42%;
+}
+
+.radar-market {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.radar-name {
+  font-size: 0.76rem;
+}
+
+.radar-loan {
+  margin-top: 0.2rem;
+  font-size: 0.78rem;
+  color: #b9c2ca;
+}
+
+.radar-badge {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+
+.radar-market .radar-badge {
+  margin-left: 0;
+}
+
+.radar-badge.ok {
+  color: var(--ok);
+  border-color: #2d5a42;
+}
+
+.radar-badge.bad {
+  color: #e8a090;
+  border-color: #5a322c;
+  background: #201412;
+}
+
+.radar-verdict.would-gate {
+  color: var(--ok);
+  border-color: #2d5a42;
+  background: #132018;
+}
+
+.radar-verdict.wouldnt {
+  color: var(--muted);
+}
+
+.radar-verdict.reject {
+  color: #e8a090;
+  border-color: #5a322c;
+  background: #201412;
+}
+
+.radar-warnings {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.radar-chip {
+  display: inline-block;
+  padding: 0.02rem 0.4rem;
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #e6c47a;
+  border: 1px solid #5a4a2c;
+  background: #221c12;
+}
+
+.radar-chip.soft {
+  color: var(--muted);
+  border-color: var(--line);
+  background: var(--bg2);
+}
+
+.radar-warn-text {
+  font-size: 0.76rem;
+  color: #b9c2ca;
+}
+
+.radar-method {
+  margin-top: 1.5rem;
+}
+
+.radar-method ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.45rem;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: #b9c2ca;
+  max-width: 90ch;
+}
+
+.radar-method strong {
+  color: var(--text);
+}
+
+@media (max-width: 560px) {
+  .radar-meta {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .radar-table td:first-child,
+  .radar-table td:last-child {
+    min-width: 0;
+    width: auto;
+  }
+
+  .radar-table td[data-label]:not([data-label="Market"])::before {
+    content: attr(data-label) ": ";
+    font-family: var(--font);
+    font-weight: 600;
+    color: var(--muted);
   }
 }
 
