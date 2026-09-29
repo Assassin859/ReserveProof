@@ -86,7 +86,7 @@ export function ExploreSection() {
           >
             {verify ? (
               <StateBadge state={verify.pass === verify.total ? "ok" : "warn"}>
-                {verify.pass} of {verify.total} pass
+                {verify.pass} of {verify.total} server checks pass
               </StateBadge>
             ) : (
               <StateBadge state="checking">checking…</StateBadge>
