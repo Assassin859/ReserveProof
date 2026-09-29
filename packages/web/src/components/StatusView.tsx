@@ -2,10 +2,16 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { CheckCircle2, CircleAlert, Loader2, XCircle } from "lucide-react";
 import { GITHUB_URL } from "../lib/deployments";
 import type { HourCell, Level, RunInfo, StatusComponent, StatusReport } from "../lib/status";
+import { cn } from "../lib/utils";
+import { ExtLink, PageHeader, Section } from "./site/PageHeader";
+import { StateBadge, StatusDot } from "./site/StateBadge";
 import { Button } from "./ui/button";
-import { PageHeader } from "./site/PageHeader";
+import { Card, CardContent } from "./ui/card";
+import { Skeleton } from "./ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 const REFRESH_MS = 60_000;
 
@@ -15,7 +21,14 @@ const OVERALL: Record<Level, string> = {
   down: "Outage: a proof is failing",
 };
 
-const PILL: Record<Level, string> = { ok: "ok", warn: "warn", down: "down" };
+const LEVEL_LABEL: Record<Level, string> = { ok: "operational", warn: "degraded", down: "down" };
+
+const HOUR_COLOR: Record<HourCell["state"], string> = {
+  success: "bg-success hover:bg-success/80",
+  failure: "bg-destructive hover:bg-destructive/80",
+  running: "bg-warning hover:bg-warning/80",
+  none: "bg-muted hover:bg-muted-foreground/30",
+};
 
 function utc(sec: number) {
   return new Date(sec * 1000).toUTCString().slice(5, 22) + " UTC";
@@ -41,46 +54,78 @@ function runLabel(r: RunInfo) {
   return r.conclusion ?? "unknown";
 }
 
+function runTone(r: RunInfo) {
+  return r.status !== "completed" ? "warn" : r.conclusion === "success" ? "ok" : "bad";
+}
+
+function hourTip(h: HourCell) {
+  return `${utc(h.start).slice(0, 12)} ${new Date(h.start * 1000).toISOString().slice(11, 16)} UTC: ${
+    h.state === "none" ? "no check ran" : `${h.runs} check${h.runs > 1 ? "s" : ""}, ${h.state}`
+  }`;
+}
+
+function HourTracker({ hours }: { hours: HourCell[] }) {
+  return (
+    <ul className="flex h-9 items-stretch gap-0.5" aria-label="Watchtower checks, last 48 hours">
+      {hours.map((h, i) => {
+        const tip = hourTip(h);
+        const cls = cn(
+          "block h-full w-full rounded-[2px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+          i === 0 && "rounded-l-md",
+          i === hours.length - 1 && "rounded-r-md",
+          HOUR_COLOR[h.state]
+        );
+        return (
+          <li key={h.start} className="flex-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                {h.url ? (
+                  <a href={h.url} target="_blank" rel="noreferrer" aria-label={tip} className={cls} />
+                ) : (
+                  <span tabIndex={0} aria-label={tip} className={cls} />
+                )}
+              </TooltipTrigger>
+              <TooltipContent className="font-mono text-xs">{tip}</TooltipContent>
+            </Tooltip>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function ComponentRow({ c }: { c: StatusComponent }) {
   return (
-    <li className="status-row">
-      <span className={`status-dot ${PILL[c.state]}`} aria-hidden />
-      <span className="status-name">
-        {c.link ? (
-          <a href={c.link} target="_blank" rel="noreferrer">
-            {c.name}
-          </a>
-        ) : (
-          c.name
-        )}
-      </span>
-      <span className="status-detail">{c.detail}</span>
-      <span className={`pill status-pill ${PILL[c.state]}`}>{c.state === "ok" ? "operational" : c.state === "warn" ? "degraded" : "down"}</span>
+    <li className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-center sm:gap-4">
+      <div className="flex min-w-0 items-center gap-2.5 sm:w-64 sm:shrink-0">
+        <StatusDot state={c.state} />
+        <span className="truncate text-sm font-medium">
+          {c.link ? (
+            <a href={c.link} target="_blank" rel="noreferrer" className="transition-colors hover:text-primary">
+              {c.name}
+            </a>
+          ) : (
+            c.name
+          )}
+        </span>
+      </div>
+      <p className="min-w-0 flex-1 break-words pl-[18px] text-sm text-muted-foreground sm:pl-0">{c.detail}</p>
+      <StateBadge state={c.state} dot={false} className="ml-[18px] self-start sm:ml-0 sm:self-center">
+        {LEVEL_LABEL[c.state]}
+      </StateBadge>
     </li>
   );
 }
 
-function HourBar({ hours }: { hours: HourCell[] }) {
+function RunRow({ href, title, meta, tone }: { href: string; title: string; meta: string; tone: string }) {
   return (
-    <div className="status-bar" role="img" aria-label="Watchtower checks, last 48 hours">
-      {hours.map((h) => {
-        const tip = `${utc(h.start).slice(0, 12)} ${new Date(h.start * 1000).toISOString().slice(11, 16)} UTC: ${
-          h.state === "none" ? "no check ran" : `${h.runs} check${h.runs > 1 ? "s" : ""}, ${h.state}`
-        }`;
-        const cell = <span className={`status-cell ${h.state}`} title={tip} />;
-        return h.url ? (
-          <a key={h.start} href={h.url} target="_blank" rel="noreferrer" aria-label={tip}>
-            {cell}
-          </a>
-        ) : (
-          <span key={h.start}>{cell}</span>
-        );
-      })}
-      <div className="status-bar-axis muted-text">
-        <span>48h ago</span>
-        <span>now</span>
-      </div>
-    </div>
+    <li className="flex items-center gap-3 px-4 py-2.5 text-sm">
+      <StatusDot state={tone} />
+      <a href={href} target="_blank" rel="noreferrer" className="font-medium transition-colors hover:text-primary">
+        {title}
+      </a>
+      <span className="ml-auto text-right font-mono text-xs text-muted-foreground">{meta}</span>
+    </li>
   );
 }
 
@@ -122,175 +167,225 @@ export function StatusView() {
         .sort((a, b) => b.createdAt - a.createdAt)
     : [];
 
+  const overallIcon = report
+    ? report.overall === "ok"
+      ? <CheckCircle2 className="h-7 w-7 shrink-0 text-success" aria-hidden />
+      : report.overall === "warn"
+        ? <CircleAlert className="h-7 w-7 shrink-0 text-warning" aria-hidden />
+        : <XCircle className="h-7 w-7 shrink-0 text-destructive" aria-hidden />
+    : null;
+
   return (
     <>
-    <PageHeader
-      eyebrow="ReserveProof · status"
-      title="Are the proofs up?"
-      lede="Every custody proof on both testnets, the Morpho oracle wrapper, the epoch publisher (every 3 days), the hourly watchtower that re-publishes if a run is missed, and the publisher's gas. Proof health is read from the chain; run history comes from GitHub Actions."
-      actions={
-        <>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/verify">Verify every claim</Link>
-          </Button>
-          <Button asChild variant="ghost" size="sm">
-            <a href="/api/status" target="_blank" rel="noreferrer">
-              JSON feed
-            </a>
-          </Button>
-        </>
-      }
-    />
-    <div className="shell">
-
-      {!report && !error && <p className="muted-text">Reading both chains and the run history…</p>}
-      {error && <p className="bad-text">Could not load status: {error}</p>}
-
-      {report && (
-        <>
-          <section className={`status-banner ${PILL[report.overall]}`} aria-live="polite">
-            <strong>{OVERALL[report.overall]}</strong>
-            <span className="muted-text mono">
-              read {ago(report.readAt, now)} ·{" "}
-              {report.chains.map((c) => `${c.label} block ${c.block ?? "—"}`).join(" · ")}
-            </span>
-            {report.reasons.length > 0 && (
-              <ul className="status-reasons">
-                {report.reasons.map((r, i) => (
-                  <li key={i}>{r}</li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          {groups.map((g) => (
-            <section key={g} className="status-group" aria-label={g}>
-              <p className="section-kicker">{g}</p>
-              <ul className="status-list">
-                {report.components
-                  .filter((c) => c.group === g)
-                  .map((c, i) => (
-                    <ComponentRow key={i} c={c} />
-                  ))}
-              </ul>
-            </section>
-          ))}
-
-          {report.watchtower && (
-            <section className="status-group" aria-label="Watchtower history">
-              <p className="section-kicker">
-                Watchtower, last 48 hours{" "}
-                <span className="muted-text">
-                  · {report.watchtower.ranInWindow} of 48 hourly slots had a check · next slot{" "}
-                  {utc(report.watchtower.nextSlot).slice(12)} ({until(report.watchtower.nextSlot, now)}) ·{" "}
-                  <a href={report.watchtower.workflowUrl} target="_blank" rel="noreferrer">
-                    all runs ↗
-                  </a>
-                </span>
-              </p>
-              <HourBar hours={report.watchtower.hours} />
-            </section>
-          )}
-
-          {report.publisher && (
-            <section className="status-group" aria-label="Recent publishes">
-              <p className="section-kicker">
-                Epoch publisher runs{" "}
-                <span className="muted-text">
-                  · next scheduled {utc(report.publisher.nextScheduled)} ({until(report.publisher.nextScheduled, now)}) ·{" "}
-                  <a href={report.publisher.workflowUrl} target="_blank" rel="noreferrer">
-                    all runs ↗
-                  </a>
-                </span>
-              </p>
-              <ul className="status-runs">
-                {report.publisher.runs.map((r) => (
-                  <li key={r.id}>
-                    <span className={`status-dot ${r.status !== "completed" ? "warn" : r.conclusion === "success" ? "ok" : "down"}`} aria-hidden />
-                    <a href={r.url} target="_blank" rel="noreferrer">
-                      {utc(r.createdAt)}
-                    </a>
-                    <span className="muted-text">
-                      {r.event === "schedule" ? "scheduled" : r.event === "workflow_dispatch" ? "manual" : r.event} ·{" "}
-                      {runLabel(r)} · {ago(r.createdAt, now)}
-                    </span>
-                  </li>
-                ))}
-                {report.publisher.runs.length === 0 && <li className="muted-text">No runs yet.</li>}
-              </ul>
-            </section>
-          )}
-
-          <section className="status-group" aria-label="Incidents">
-            <p className="section-kicker">Incidents</p>
-            {failedRuns.length === 0 && report.overall === "ok" ? (
-              <p className="muted-text">No failed runs in the window shown and nothing degraded right now.</p>
-            ) : (
-              <ul className="status-runs">
-                {report.reasons.map((r, i) => (
-                  <li key={`now-${i}`}>
-                    <span className="status-dot warn" aria-hidden />
-                    <span>
-                      <strong>Now:</strong> {r}
-                    </span>
-                  </li>
-                ))}
-                {failedRuns.map((r) => (
-                  <li key={r.id}>
-                    <span className="status-dot down" aria-hidden />
-                    <a href={r.url} target="_blank" rel="noreferrer">
-                      {r.workflow} {runLabel(r)}
-                    </a>
-                    <span className="muted-text">
-                      {utc(r.createdAt)} · {ago(r.createdAt, now)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          {report.errors.length > 0 && (
-            <p className="warn-text risk-errors">
-              {report.errors.length} source{report.errors.length > 1 ? "s" : ""} degraded: {report.errors.slice(0, 3).join("; ")}
+      <PageHeader
+        eyebrow="ReserveProof · status"
+        title="Are the proofs up?"
+        lede="Every custody proof on both testnets, the Morpho oracle wrapper, the epoch publisher (every 3 days), the hourly watchtower that re-publishes if a run is missed, and the publisher's gas. Proof health is read from the chain; run history comes from GitHub Actions."
+        actions={
+          <>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/verify">Verify every claim</Link>
+            </Button>
+            <Button asChild variant="ghost" size="sm">
+              <a href="/api/status" target="_blank" rel="noreferrer">
+                JSON feed
+              </a>
+            </Button>
+          </>
+        }
+      />
+      <div className="container space-y-10 py-10 lg:py-12">
+        {!report && !error && (
+          <div className="space-y-3" aria-busy>
+            <p className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Reading both chains and the run history…
             </p>
-          )}
-        </>
-      )}
+            <Skeleton className="h-24 w-full" />
+            <Skeleton className="h-48 w-full" />
+          </div>
+        )}
+        {error && (
+          <p role="alert" className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            Could not load status: {error}
+          </p>
+        )}
 
-      <section className="radar-method" aria-label="Method">
-        <p className="section-kicker">How this is judged</p>
-        <ul>
-          <li>
-            <strong>Down</strong>: a custody proof is failing, an equivocation is proven, a balance challenge is past its
-            deadline, an ExitRight claim defaulted, the Morpho wrapper is reverting, or a gated consumer is frozen.
-          </li>
-          <li>
-            <strong>Degraded</strong>: a proof has under 48 hours before it goes stale, a dispute or challenge is open, the
-            last publisher or watchtower run failed, no watchtower check ran in the last 3 hours, or the publisher has
-            under 0.001 ETH.
-          </li>
-          <li>
-            GitHub runs scheduled workflows best-effort and can start them hours late, so a gap in the hourly bar is shown
-            as it is rather than hidden. The watchtower re-publishes whenever a proof has under 72 hours left, so a late
-            check still lands days before anything goes stale.
-          </li>
-          <li>
-            Sources: <span className="mono">loadRisk</span> reads of both testnets (the same data as{" "}
-            <Link href="/risk">/risk</Link>), the deployer&apos;s balance, and the GitHub Actions API for{" "}
-            <a href={`${GITHUB_URL}/actions/workflows/watchtower.yml`} target="_blank" rel="noreferrer">
-              watchtower.yml
-            </a>{" "}
-            and{" "}
-            <a href={`${GITHUB_URL}/actions/workflows/ops-epoch.yml`} target="_blank" rel="noreferrer">
-              ops-epoch.yml
-            </a>
-            . Cached for 2 minutes; the page refreshes every minute.
-          </li>
-        </ul>
-      </section>
+        {report && (
+          <>
+            <Card
+              aria-live="polite"
+              className={cn(
+                "border-l-2 bg-card/70",
+                report.overall === "ok" ? "border-l-success/70" : report.overall === "warn" ? "border-l-warning/70" : "border-l-destructive/80"
+              )}
+            >
+              <CardContent className="space-y-3 p-5 md:p-6">
+                <div className="flex items-center gap-3">
+                  {overallIcon}
+                  <div className="min-w-0">
+                    <p className="font-display text-xl font-semibold tracking-tight md:text-2xl">{OVERALL[report.overall]}</p>
+                    <p className="font-mono text-xs text-muted-foreground">
+                      read {ago(report.readAt, now)} · {report.chains.map((c) => `${c.label} block ${c.block ?? "—"}`).join(" · ")}
+                    </p>
+                  </div>
+                </div>
+                {report.reasons.length > 0 && (
+                  <ul className="space-y-1 pl-10 text-sm text-warning">
+                    {report.reasons.map((r, i) => (
+                      <li key={i}>{r}</li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
 
-    </div>
+            {report.watchtower && (
+              <Section
+                kicker="Watchtower, last 48 hours"
+                title={`${report.watchtower.ranInWindow} of 48 hourly slots had a check`}
+                description={
+                  <>
+                    Next slot {utc(report.watchtower.nextSlot).slice(12)} ({until(report.watchtower.nextSlot, now)}) ·{" "}
+                    <ExtLink href={report.watchtower.workflowUrl}>all runs ↗</ExtLink>
+                  </>
+                }
+              >
+                <Card className="bg-card/60">
+                  <CardContent className="p-4 md:p-5">
+                    <HourTracker hours={report.watchtower.hours} />
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                      <span>48h ago</span>
+                      <span className="order-last flex w-full flex-wrap gap-3 sm:order-none sm:w-auto">
+                        {(["success", "failure", "running", "none"] as const).map((s) => (
+                          <span key={s} className="inline-flex items-center gap-1.5">
+                            <span className={cn("h-2 w-2 rounded-sm", HOUR_COLOR[s])} aria-hidden />
+                            {s === "none" ? "no check" : s}
+                          </span>
+                        ))}
+                      </span>
+                      <span>now</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Section>
+            )}
+
+            {groups.map((g) => (
+              <Section key={g} kicker={g}>
+                <Card className="overflow-hidden bg-card/60">
+                  <ul className="divide-y divide-border/60">
+                    {report.components
+                      .filter((c) => c.group === g)
+                      .map((c, i) => (
+                        <ComponentRow key={i} c={c} />
+                      ))}
+                  </ul>
+                </Card>
+              </Section>
+            ))}
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              {report.publisher && (
+                <Section
+                  kicker="Epoch publisher runs"
+                  description={
+                    <>
+                      Next scheduled {utc(report.publisher.nextScheduled)} ({until(report.publisher.nextScheduled, now)}) ·{" "}
+                      <ExtLink href={report.publisher.workflowUrl}>all runs ↗</ExtLink>
+                    </>
+                  }
+                >
+                  <Card className="overflow-hidden bg-card/60">
+                    <ul className="divide-y divide-border/60">
+                      {report.publisher.runs.map((r) => (
+                        <RunRow
+                          key={r.id}
+                          href={r.url}
+                          title={utc(r.createdAt)}
+                          tone={runTone(r)}
+                          meta={`${r.event === "schedule" ? "scheduled" : r.event === "workflow_dispatch" ? "manual" : r.event} · ${runLabel(r)} · ${ago(r.createdAt, now)}`}
+                        />
+                      ))}
+                      {report.publisher.runs.length === 0 && <li className="px-4 py-3 text-sm text-muted-foreground">No runs yet.</li>}
+                    </ul>
+                  </Card>
+                </Section>
+              )}
+
+              <Section kicker="Incidents">
+                <Card className="overflow-hidden bg-card/60">
+                  {failedRuns.length === 0 && report.overall === "ok" ? (
+                    <p className="flex items-center gap-2 px-4 py-4 text-sm text-muted-foreground">
+                      <CheckCircle2 className="h-4 w-4 text-success" /> No failed runs in the window shown and nothing degraded right now.
+                    </p>
+                  ) : (
+                    <ul className="divide-y divide-border/60">
+                      {report.reasons.map((r, i) => (
+                        <li key={`now-${i}`} className="flex items-start gap-3 px-4 py-2.5 text-sm">
+                          <StatusDot state="warn" className="mt-1.5" />
+                          <span>
+                            <strong>Now:</strong> {r}
+                          </span>
+                        </li>
+                      ))}
+                      {failedRuns.map((r) => (
+                        <RunRow
+                          key={r.id}
+                          href={r.url}
+                          title={`${r.workflow} ${runLabel(r)}`}
+                          tone="bad"
+                          meta={`${utc(r.createdAt)} · ${ago(r.createdAt, now)}`}
+                        />
+                      ))}
+                    </ul>
+                  )}
+                </Card>
+              </Section>
+            </div>
+
+            {report.errors.length > 0 && (
+              <p className="text-sm text-warning">
+                {report.errors.length} source{report.errors.length > 1 ? "s" : ""} degraded: {report.errors.slice(0, 3).join("; ")}
+              </p>
+            )}
+          </>
+        )}
+
+        <Section kicker="How this is judged">
+          <Card className="bg-card/40">
+            <CardContent className="p-5 md:p-6">
+              <ul className="space-y-3 text-sm leading-relaxed text-muted-foreground">
+                <li>
+                  <strong className="text-destructive">Down</strong>: a custody proof is failing, an equivocation is proven, a
+                  balance challenge is past its deadline, an ExitRight claim defaulted, the Morpho wrapper is reverting, or a gated
+                  consumer is frozen.
+                </li>
+                <li>
+                  <strong className="text-warning">Degraded</strong>: a proof has under 48 hours before it goes stale, a dispute or
+                  challenge is open, the last publisher or watchtower run failed, no watchtower check ran in the last 3 hours, or
+                  the publisher has under 0.001 ETH.
+                </li>
+                <li>
+                  GitHub runs scheduled workflows best-effort and can start them hours late, so a gap in the hourly bar is shown as
+                  it is rather than hidden. The watchtower re-publishes whenever a proof has under 72 hours left, so a late check
+                  still lands days before anything goes stale.
+                </li>
+                <li>
+                  Sources: <span className="font-mono text-xs text-foreground/80">loadRisk</span> reads of both testnets (the same
+                  data as{" "}
+                  <Link href="/risk" className="text-primary underline-offset-4 hover:underline">
+                    /risk
+                  </Link>
+                  ), the deployer&apos;s balance, and the GitHub Actions API for{" "}
+                  <ExtLink href={`${GITHUB_URL}/actions/workflows/watchtower.yml`}>watchtower.yml</ExtLink> and{" "}
+                  <ExtLink href={`${GITHUB_URL}/actions/workflows/ops-epoch.yml`}>ops-epoch.yml</ExtLink>. Cached for 2 minutes;
+                  the page refreshes every minute.
+                </li>
+              </ul>
+            </CardContent>
+          </Card>
+        </Section>
+      </div>
     </>
   );
 }

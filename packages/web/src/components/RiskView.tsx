@@ -1,11 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { ArrowUpRight, Loader2 } from "lucide-react";
 import { GITHUB_URL, NETWORK_KEYS, type NetworkKey } from "../lib/deployments";
-import { Button } from "./ui/button";
-import { PageHeader } from "./site/PageHeader";
 import type { AssetRisk, ConsumerRisk, FreezeTrigger, RiskReport } from "../lib/risk";
+import { cn } from "../lib/utils";
+import { KpiCard } from "./site/KpiCard";
+import { PageHeader } from "./site/PageHeader";
+import { StateBadge } from "./site/StateBadge";
+import { Button } from "./ui/button";
+import { Card, CardContent } from "./ui/card";
+import { Skeleton } from "./ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 type Loaded = { report?: RiskReport; error?: string };
 
@@ -53,23 +62,78 @@ function CoverageBar({ coverageBps, floorBps }: { coverageBps: number | null; fl
   const fill = Math.min(100, (coverageBps / scale) * 100);
   const floor = (floorBps / scale) * 100;
   return (
-    <div className="cov-bar" role="img" aria-label={`coverage ${pct(coverageBps)}, floor ${pct(floorBps)}`}>
-      <div className={`cov-fill ${coverageBps >= floorBps ? "ok" : "bad"}`} style={{ width: `${fill}%` }} />
-      <div className="cov-floor" style={{ left: `${floor}%` }} title={`floor ${pct(floorBps)}`} />
+    <div>
+      <div className="relative mt-4 h-2 w-full rounded-full bg-muted">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div
+              tabIndex={0}
+              aria-label={`coverage ${pct(coverageBps)}`}
+              className={cn("absolute inset-y-0 left-0 rounded-full outline-none", coverageBps >= floorBps ? "bg-success/80" : "bg-destructive/80")}
+              style={{ width: `${fill}%` }}
+            />
+          </TooltipTrigger>
+          <TooltipContent className="font-mono text-xs">coverage {pct(coverageBps)}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div
+              tabIndex={0}
+              aria-label={`floor ${pct(floorBps)}`}
+              className="absolute top-1/2 h-4 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground outline-none ring-2 ring-background"
+              style={{ left: `${floor}%` }}
+            />
+          </TooltipTrigger>
+          <TooltipContent className="font-mono text-xs">floor {pct(floorBps)}</TooltipContent>
+        </Tooltip>
+      </div>
+      <div className="mt-1.5 flex justify-between font-mono text-[0.65rem] text-muted-foreground">
+        <span>0%</span>
+        <span>{pct(scale)}</span>
+      </div>
     </div>
   );
 }
 
+function Block({ title, status, tone, warn, children }: { title: string; status: ReactNode; tone?: string; warn?: boolean; children: ReactNode }) {
+  return (
+    <div className={cn("rounded-lg border border-border/60 bg-background/30 p-3.5", warn && "border-warning/40 bg-warning/5")}>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="text-[0.7rem] font-medium uppercase tracking-[0.14em] text-muted-foreground">{title}</p>
+        <span className={cn("text-sm", tone === "bad" ? "text-destructive" : tone === "ok" ? "text-success" : "")}>{status}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function KV({ rows }: { rows: { k: string; v: ReactNode; bad?: boolean }[] }) {
+  return (
+    <dl className="mt-3 grid grid-cols-1 gap-x-4 gap-y-1.5 text-xs sm:grid-cols-[max-content_minmax(0,1fr)]">
+      {rows.map((r) => (
+        <div key={r.k} className="contents">
+          <dt className="text-muted-foreground">{r.k}</dt>
+          <dd className={cn("mb-1 break-words font-mono sm:mb-0", r.bad && "text-destructive")}>{r.v}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+const muted = (s: ReactNode) => <span className="text-muted-foreground">{s}</span>;
+
 function AssetCard({ a, now, gatedBy }: { a: AssetRisk; now: number; gatedBy: string[] }) {
   if (!a.published) {
     return (
-      <div className="risk-card">
-        <div className="risk-card-head">
-          <strong>{a.label}</strong>
-          <span className="muted-text">not published on this chain</span>
-        </div>
-        <p className="risk-identity">{a.identity}</p>
-      </div>
+      <Card className="bg-card/40">
+        <CardContent className="space-y-1 p-4">
+          <div className="flex items-center justify-between gap-2">
+            <p className="font-semibold">{a.label}</p>
+            <span className="text-xs text-muted-foreground">not published on this chain</span>
+          </div>
+          <p className="text-xs text-muted-foreground">{a.identity}</p>
+        </CardContent>
+      </Card>
     );
   }
   const cov = a.coverage;
@@ -80,150 +144,162 @@ function AssetCard({ a, now, gatedBy }: { a: AssetRisk; now: number; gatedBy: st
   const liveStale = st ? st.staleAt - now : null;
   const liveMargin = st ? st.staleAt - Math.max(st.nextPublish, now) : null;
   return (
-    <div className="risk-card">
-      <div className="risk-card-head">
-        <strong>{a.label}</strong>
-        <span className={`pill ${a.status?.ok ? "ok" : "bad"}`}>
-          {a.status ? (a.status.ok ? "solvent" : "insolvent") : "—"}
-        </span>
-        <span className="mono muted-text">
-          {a.status?.reasonLabel ?? ""} · epoch {a.status?.epochId ?? "—"}
-        </span>
-      </div>
-      <p className="risk-gated">
-        {gatedBy.length ? (
-          <>
-            Gates <strong>{gatedBy.length}</strong> consumer{gatedBy.length > 1 ? "s" : ""}: {gatedBy.join(", ")}
-          </>
-        ) : (
-          <span className="muted-text">No gated consumer on this chain</span>
+    <Card className={cn("border-l-2 bg-card/60", a.status?.ok ? "border-l-success/70" : "border-l-destructive/80")}>
+      <CardContent className="space-y-3 p-4 md:p-5">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="font-display text-lg font-semibold">{a.label}</p>
+          <StateBadge state={a.status ? (a.status.ok ? "ok" : "bad") : "neutral"}>
+            {a.status ? (a.status.ok ? "solvent" : "insolvent") : "—"}
+          </StateBadge>
+          <span className="ml-auto font-mono text-xs text-muted-foreground">
+            {a.status?.reasonLabel ?? ""} · epoch {a.status?.epochId ?? "—"}
+          </span>
+        </div>
+        <p className="text-sm">
+          {gatedBy.length ? (
+            <>
+              Gates <strong>{gatedBy.length}</strong> consumer{gatedBy.length > 1 ? "s" : ""}: {gatedBy.join(", ")}
+            </>
+          ) : (
+            muted("No gated consumer on this chain")
+          )}
+        </p>
+        <p className="text-xs text-muted-foreground">{a.identity}</p>
+
+        {cov && (
+          <Block
+            title="Coverage vs floor"
+            tone={cov.coverageBps !== null && cov.coverageBps < cov.floorBps ? "bad" : undefined}
+            status={
+              <>
+                <strong className="font-mono">{pct(cov.coverageBps)}</strong> {muted(`/ ${pct(cov.floorBps)} required`)}
+              </>
+            }
+          >
+            <CoverageBar coverageBps={cov.coverageBps} floorBps={cov.floorBps} />
+            <KV
+              rows={[
+                { k: "Owed here", v: `${fmt(cov.allocation.value)} ${a.label}` },
+                { k: "Required (floor)", v: fmt(cov.need.value) },
+                {
+                  k: "Counted reserves",
+                  v: (
+                    <>
+                      {cov.effective ? fmt(cov.effective.value) : "—"}{" "}
+                      {muted(
+                        `min(live ${cov.live ? fmt(cov.live.value) : "—"}, lowest sample ${cov.sampleMin ? fmt(cov.sampleMin.value) : "—"})`
+                      )}
+                    </>
+                  ),
+                },
+                {
+                  k: "Headroom",
+                  v: `${cov.headroom ? fmt(cov.headroom.value) : "—"} (${pct(cov.headroomBps)} can go before LIVE_SHORT)`,
+                  bad: !!cov.headroom && cov.headroom.value < 0,
+                },
+                { k: "Samples", v: `${cov.samples} / ${cov.minSamples} required`, bad: cov.samples < cov.minSamples },
+              ]}
+            />
+          </Block>
         )}
-      </p>
-      <p className="risk-identity">{a.identity}</p>
 
-      {cov && (
-        <div className="risk-block">
-          <div className="risk-row">
-            <span className="label">Coverage vs floor</span>
-            <span className={cov.coverageBps !== null && cov.coverageBps < cov.floorBps ? "bad-text" : ""}>
-              <strong>{pct(cov.coverageBps)}</strong> <span className="muted-text">/ {pct(cov.floorBps)} required</span>
-            </span>
-          </div>
-          <CoverageBar coverageBps={cov.coverageBps} floorBps={cov.floorBps} />
-          <div className="risk-kv">
-            <span>Owed here</span>
-            <span className="mono">{fmt(cov.allocation.value)} {a.label}</span>
-            <span>Required (floor)</span>
-            <span className="mono">{fmt(cov.need.value)}</span>
-            <span>Counted reserves</span>
-            <span className="mono">
-              {cov.effective ? fmt(cov.effective.value) : "—"}{" "}
-              <span className="muted-text">
-                min(live {cov.live ? fmt(cov.live.value) : "—"}, lowest sample {cov.sampleMin ? fmt(cov.sampleMin.value) : "—"})
-              </span>
-            </span>
-            <span>Headroom</span>
-            <span className={`mono ${cov.headroom && cov.headroom.value < 0 ? "bad-text" : ""}`}>
-              {cov.headroom ? fmt(cov.headroom.value) : "—"} ({pct(cov.headroomBps)} can go before LIVE_SHORT)
-            </span>
-            <span>Samples</span>
-            <span className={`mono ${cov.samples < cov.minSamples ? "bad-text" : ""}`}>
-              {cov.samples} / {cov.minSamples} required
-            </span>
-          </div>
-        </div>
-      )}
+        {mu && (
+          <Block
+            title="Multiplier (ERC-8056)"
+            warn={mu.drift || mu.pendingChange}
+            tone={mu.drift || mu.pendingChange ? "bad" : "ok"}
+            status={mu.drift ? "drift: MULTIPLIER_DRIFT now" : mu.pendingChange ? "change pending: MULTIPLIER_DRIFT now" : "matches the epoch"}
+          >
+            <KV
+              rows={[
+                { k: "Live uiMultiplier", v: mu.live === null ? "reverts" : multiplier(mu.live) },
+                { k: "Committed in epoch", v: mu.committed === null ? "—" : multiplier(mu.committed), bad: mu.drift },
+                {
+                  k: "Scheduled change",
+                  v:
+                    mu.pendingChange && mu.pending !== null && mu.effectiveAt
+                      ? `→ ${multiplier(mu.pending)} at ${utc(mu.effectiveAt)} (${until(mu.effectiveAt, now)})`
+                      : "none",
+                  bad: mu.pendingChange,
+                },
+              ]}
+            />
+            <p className="mt-3 text-xs text-muted-foreground">
+              Only the registry-listed contract is ever gated; a copycat or unlisted token never is. See{" "}
+              <Link href="/radar" className="text-primary underline-offset-4 hover:underline">
+                the mainnet radar
+              </Link>
+              .
+            </p>
+          </Block>
+        )}
 
-      {mu && (
-        <div className={`risk-block ${mu.drift || mu.pendingChange ? "risk-warn" : ""}`}>
-          <div className="risk-row">
-            <span className="label">Multiplier (ERC-8056)</span>
-            <span className={mu.drift || mu.pendingChange ? "bad-text" : "ok-text"}>
-              {mu.drift
-                ? "drift: MULTIPLIER_DRIFT now"
-                : mu.pendingChange
-                  ? "change pending: MULTIPLIER_DRIFT now"
-                  : "matches the epoch"}
-            </span>
-          </div>
-          <div className="risk-kv">
-            <span>Live uiMultiplier</span>
-            <span className="mono">{mu.live === null ? "reverts" : multiplier(mu.live)}</span>
-            <span>Committed in epoch</span>
-            <span className={`mono ${mu.drift ? "bad-text" : ""}`}>{mu.committed === null ? "—" : multiplier(mu.committed)}</span>
-            <span>Scheduled change</span>
-            <span className={`mono ${mu.pendingChange ? "bad-text" : ""}`}>
-              {mu.pendingChange && mu.pending !== null && mu.effectiveAt
-                ? `→ ${multiplier(mu.pending)} at ${utc(mu.effectiveAt)} (${until(mu.effectiveAt, now)})`
-                : "none"}
-            </span>
-          </div>
-          <p className="risk-note">
-            Only the registry-listed contract is ever gated; a copycat or unlisted token never is. See{" "}
-            <Link href="/radar">the mainnet radar</Link>.
-          </p>
-        </div>
-      )}
+        {st && liveStale !== null && liveMargin !== null && (
+          <Block
+            title="Time to stale"
+            tone={liveStale <= 0 ? "bad" : undefined}
+            status={
+              <>
+                <strong className="font-mono">{liveStale > 0 ? dur(liveStale) : "STALE"}</strong> {muted(`at ${utc(st.staleAt)}`)}
+              </>
+            }
+          >
+            <KV
+              rows={[
+                { k: "Last published", v: <>{utc(st.committedAt)} {muted(`(${until(st.committedAt, now)})`)}</> },
+                { k: "Max age", v: dur(st.maxOracleAge) },
+                { k: "Next scheduled publish", v: <>{utc(st.nextPublish)} {muted(`(${until(st.nextPublish, now)})`)}</> },
+                {
+                  k: "Margin",
+                  v: (
+                    <span className={liveMargin < 0 ? "text-destructive" : "text-success"}>
+                      {liveMargin < 0 ? `next publish lands ${dur(-liveMargin)} after stale` : `${dur(liveMargin)} to spare`}
+                    </span>
+                  ),
+                },
+              ]}
+            />
+          </Block>
+        )}
 
-      {st && liveStale !== null && liveMargin !== null && (
-        <div className="risk-block">
-          <div className="risk-row">
-            <span className="label">Time to stale</span>
-            <span className={liveStale <= 0 ? "bad-text" : ""}>
-              <strong>{liveStale > 0 ? dur(liveStale) : "STALE"}</strong>{" "}
-              <span className="muted-text">at {utc(st.staleAt)}</span>
-            </span>
-          </div>
-          <div className="risk-kv">
-            <span>Last published</span>
-            <span className="mono">
-              {utc(st.committedAt)} <span className="muted-text">({until(st.committedAt, now)})</span>
-            </span>
-            <span>Max age</span>
-            <span className="mono">{dur(st.maxOracleAge)}</span>
-            <span>Next scheduled publish</span>
-            <span className="mono">
-              {utc(st.nextPublish)} <span className="muted-text">({until(st.nextPublish, now)})</span>
-            </span>
-            <span>Margin</span>
-            <span className={`mono ${liveMargin < 0 ? "bad-text" : "ok-text"}`}>
-              {liveMargin < 0 ? `next publish lands ${dur(-liveMargin)} after stale` : `${dur(liveMargin)} to spare`}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {d && x && (
-        <div className="risk-block">
-          <div className="risk-row">
-            <span className="label">Disputes and exits</span>
-            <span className={d.isDisputed || d.overdue || d.equivocated || x.exitDefault ? "bad-text" : "ok-text"}>
-              {d.equivocated
+        {d && x && (
+          <Block
+            title="Disputes and exits"
+            tone={d.isDisputed || d.overdue || d.equivocated || x.exitDefault ? "bad" : "ok"}
+            status={
+              d.equivocated
                 ? "equivocation proven (permanent)"
                 : x.exitDefault
                   ? "exit default (permanent)"
                   : d.isDisputed || d.overdue
                     ? "disputed"
-                    : "none open"}
-            </span>
-          </div>
-          <div className="risk-kv">
-            <span>Open disputes</span>
-            <span className="mono">{d.openDisputes}</span>
-            <span>Balance challenges</span>
-            <span className={`mono ${d.overdue ? "bad-text" : ""}`}>
-              {d.openChallenges} open · {d.queueLength} ever queued{d.overdue ? " · OVERDUE" : ""}{" "}
-              <span className="muted-text">(answer window {dur(d.challengeWindowSec)})</span>
-            </span>
-            <span>Exit claims</span>
-            <span className={`mono ${x.exitDefault ? "bad-text" : ""}`}>
-              {x.openClaims} open
-              {x.nextDeadline ? ` · next deadline ${utc(x.nextDeadline)} (${until(x.nextDeadline, now)})` : ""}
-            </span>
-          </div>
-        </div>
-      )}
-    </div>
+                    : "none open"
+            }
+          >
+            <KV
+              rows={[
+                { k: "Open disputes", v: d.openDisputes },
+                {
+                  k: "Balance challenges",
+                  v: (
+                    <>
+                      {d.openChallenges} open · {d.queueLength} ever queued{d.overdue ? " · OVERDUE" : ""}{" "}
+                      {muted(`(answer window ${dur(d.challengeWindowSec)})`)}
+                    </>
+                  ),
+                  bad: d.overdue,
+                },
+                {
+                  k: "Exit claims",
+                  v: `${x.openClaims} open${x.nextDeadline ? ` · next deadline ${utc(x.nextDeadline)} (${until(x.nextDeadline, now)})` : ""}`,
+                  bad: x.exitDefault,
+                },
+              ]}
+            />
+          </Block>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -243,112 +319,165 @@ function morphoLine(c: ConsumerRisk, now: number) {
   }
 }
 
+function ConsumerName({ c, explorer }: { c: ConsumerRisk; explorer: string | null }) {
+  return (
+    <div className="min-w-0">
+      <p className="font-semibold">{c.name}</p>
+      <p className="font-mono text-xs text-muted-foreground">
+        {explorer ? (
+          <a href={`${explorer}/address/${c.address}`} target="_blank" rel="noreferrer" className="transition-colors hover:text-primary">
+            {short(c.address)}
+          </a>
+        ) : (
+          short(c.address)
+        )}
+      </p>
+      <p className="text-xs text-muted-foreground">gated on {c.gatedLabel}</p>
+    </div>
+  );
+}
+
+function ConsumerState({ c }: { c: ConsumerRisk }) {
+  return (
+    <div className="space-y-1">
+      <StateBadge state={c.state === "open" ? "ok" : "bad"}>
+        {c.state === "open" ? "open" : c.state === "frozen" ? "frozen now" : "unknown"}
+      </StateBadge>
+      {c.reasonLabel && <p className="font-mono text-xs text-destructive">{c.reasonLabel}</p>}
+    </div>
+  );
+}
+
+function ConsumerEffects({ c, now }: { c: ConsumerRisk; now: number }) {
+  return (
+    <div className="space-y-1 text-xs leading-relaxed">
+      <p>
+        <span className="font-medium text-destructive">Freezes:</span> {c.freezes.join(", ")}
+      </p>
+      <p>
+        <span className="font-medium text-success">Stays open:</span> {c.staysOpen.join(", ")}
+      </p>
+      <p className="text-muted-foreground">{c.exposure.map((e) => `${e.label}: ${e.value}`).join(" · ")}</p>
+      {c.morpho && (
+        <p className="rounded-md border border-border/60 bg-background/40 px-2 py-1.5">
+          {morphoLine(c, now)}
+          {c.morpho.basePrice !== null && muted(` Base oracle: ${fmt(c.morpho.basePrice, 4)} USDG/${c.gatedLabel}.`)}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function Consumers({ consumers, explorer, now }: { consumers: ConsumerRisk[]; explorer: string | null; now: number }) {
   return (
-    <table className="risk-table">
-      <thead>
-        <tr>
-          <th>Consumer</th>
-          <th>State</th>
-          <th>What freezes · what stays open</th>
-        </tr>
-      </thead>
-      <tbody>
+    <Card className="overflow-hidden bg-card/60">
+      <div className="hidden sm:block">
+        <Table>
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead>Consumer</TableHead>
+              <TableHead>State</TableHead>
+              <TableHead>What freezes · what stays open</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {consumers.map((c) => (
+              <TableRow key={c.address}>
+                <TableCell className="align-top">
+                  <ConsumerName c={c} explorer={explorer} />
+                </TableCell>
+                <TableCell className="align-top">
+                  <ConsumerState c={c} />
+                </TableCell>
+                <TableCell className="align-top">
+                  <ConsumerEffects c={c} now={now} />
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      <ul className="divide-y divide-border/60 sm:hidden">
         {consumers.map((c) => (
-          <tr key={c.address}>
-            <td>
-              <strong>{c.name}</strong>
-              <div className="mono muted-text">
-                {explorer ? (
-                  <a href={`${explorer}/address/${c.address}`} target="_blank" rel="noreferrer">
-                    {short(c.address)}
-                  </a>
-                ) : (
-                  short(c.address)
-                )}
-              </div>
-              <div className="muted-text">gated on {c.gatedLabel}</div>
-            </td>
-            <td>
-              <span className={`pill ${c.state === "open" ? "ok" : "bad"}`}>
-                {c.state === "open" ? "open" : c.state === "frozen" ? "frozen now" : "unknown"}
-              </span>
-              {c.reasonLabel && <div className="mono bad-text">{c.reasonLabel}</div>}
-            </td>
-            <td>
-              <div>
-                <span className="bad-text">Freezes:</span> {c.freezes.join(", ")}
-              </div>
-              <div>
-                <span className="ok-text">Stays open:</span> {c.staysOpen.join(", ")}
-              </div>
-              <div className="muted-text">
-                {c.exposure.map((e) => `${e.label}: ${e.value}`).join(" · ")}
-              </div>
-              {c.morpho && (
-                <div className="risk-morpho">
-                  {morphoLine(c, now)}
-                  {c.morpho.basePrice !== null && (
-                    <span className="muted-text"> Base oracle: {fmt(c.morpho.basePrice, 4)} USDG/{c.gatedLabel}.</span>
-                  )}
-                </div>
-              )}
-            </td>
-          </tr>
+          <li key={c.address} className="space-y-2.5 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <ConsumerName c={c} explorer={explorer} />
+              <ConsumerState c={c} />
+            </div>
+            <ConsumerEffects c={c} now={now} />
+          </li>
         ))}
-      </tbody>
-    </table>
+      </ul>
+    </Card>
   );
 }
 
 function Triggers({ triggers, now }: { triggers: FreezeTrigger[]; now: number }) {
-  if (!triggers.length) return <p className="muted-text">No gated consumer depends on a published asset here.</p>;
+  if (!triggers.length) return <p className="text-sm text-muted-foreground">No gated consumer depends on a published asset here.</p>;
   return (
-    <ul className="risk-triggers">
-      {triggers.map((t, i) => (
-        <li key={i} className={t.active ? "active" : ""}>
-          <span className={`pill ${t.active ? "bad" : "ok"}`}>{t.active ? "now" : "if"}</span>
-          <span>
-            {t.text}
-            {t.at && !t.active ? <span className="muted-text"> ({until(t.at, now)})</span> : null}
-          </span>
-        </li>
-      ))}
-    </ul>
+    <Card className="overflow-hidden bg-card/60">
+      <ul className="divide-y divide-border/60">
+        {triggers.map((t, i) => (
+          <li key={i} className={cn("flex items-start gap-3 px-4 py-2.5 text-sm", t.active && "bg-destructive/[0.06]")}>
+            <StateBadge state={t.active ? "bad" : "neutral"} dot={t.active} className="mt-0.5 w-12 justify-center">
+              {t.active ? "now" : "if"}
+            </StateBadge>
+            <span className="min-w-0">
+              {t.text}
+              {t.at && !t.active ? muted(` (${until(t.at, now)})`) : null}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
+}
+
+function Kicker({ children }: { children: ReactNode }) {
+  return <p className="mb-2.5 mt-6 text-xs font-semibold uppercase tracking-[0.16em] text-primary first:mt-0">{children}</p>;
 }
 
 function ChainColumn({ keyName, state, now }: { keyName: NetworkKey; state: Loaded | undefined; now: number }) {
   const r = state?.report;
   return (
-    <section className="risk-col" aria-label={r?.label ?? keyName}>
-      <div className="risk-col-head">
-        <h2>{r?.label ?? keyName}</h2>
+    <section aria-label={r?.label ?? keyName} className="min-w-0">
+      <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2 border-b border-border/60 pb-3">
+        <h2 className="font-display text-2xl font-semibold tracking-tight">{r?.label ?? keyName}</h2>
         {r && (
-          <span className="muted-text mono">
+          <span className="font-mono text-xs text-muted-foreground">
             block {r.block ?? "—"} · read {until(r.readAt, now)}
           </span>
         )}
       </div>
-      {!state && <p className="muted-text">Reading the chain…</p>}
-      {state?.error && <p className="bad-text">Could not load: {state.error}</p>}
+      {!state && (
+        <div className="space-y-3" aria-busy>
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Reading the chain…
+          </p>
+          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-32 w-full" />
+        </div>
+      )}
+      {state?.error && <p role="alert" className="text-sm text-destructive">Could not load: {state.error}</p>}
       {r && (
         <>
-          <p className="section-kicker">Custody proofs</p>
-          {r.assets.map((a) => (
-            <AssetCard
-              key={a.address}
-              a={a}
-              now={now}
-              gatedBy={r.consumers.filter((c) => c.gatedAsset === a.kind).map((c) => c.name)}
-            />
-          ))}
-          <p className="section-kicker">Gated consumers</p>
+          <Kicker>Custody proofs</Kicker>
+          <div className="space-y-3">
+            {r.assets.map((a) => (
+              <AssetCard
+                key={a.address}
+                a={a}
+                now={now}
+                gatedBy={r.consumers.filter((c) => c.gatedAsset === a.kind).map((c) => c.name)}
+              />
+            ))}
+          </div>
+          <Kicker>Gated consumers</Kicker>
           <Consumers consumers={r.consumers} explorer={r.explorer} now={now} />
-          <p className="section-kicker">Freezes if</p>
+          <Kicker>Freezes if</Kicker>
           <Triggers triggers={r.triggers} now={now} />
           {r.errors.length > 0 && (
-            <p className="warn-text risk-errors">
+            <p className="mt-4 text-sm text-warning">
               {r.errors.length} read{r.errors.length > 1 ? "s" : ""} failed: {r.errors.slice(0, 3).join("; ")}
             </p>
           )}
@@ -361,6 +490,7 @@ function ChainColumn({ keyName, state, now }: { keyName: NetworkKey; state: Load
 export function RiskView() {
   const [data, setData] = useState<Partial<Record<NetworkKey, Loaded>>>({});
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
+  const [tab, setTab] = useState<string>(CHAINS[0]);
 
   const load = useCallback(async () => {
     await Promise.all(
@@ -405,67 +535,67 @@ export function RiskView() {
 
   return (
     <>
-    <PageHeader
-      eyebrow="ReserveProof · curator risk"
-      title="What would freeze, and when."
-      lede="For vault curators and risk teams: every solvency-gated market on both testnets, the custody proof it depends on, how much room that proof has left, and exactly what would stop it. Everything is read live from the chain every 30 seconds."
-      actions={
-        <>
-          <Button asChild variant="outline" size="sm">
-            <a href={`${GITHUB_URL}/actions/workflows/ops-epoch.yml`} target="_blank" rel="noreferrer">
-              Epoch publisher
-            </a>
-          </Button>
-          <Button asChild variant="ghost" size="sm">
-            <a href="/api/risk?network=robinhoodTestnet" target="_blank" rel="noreferrer">
-              JSON feed
-            </a>
-          </Button>
-        </>
-      }
-    />
-    <div className="shell">
+      <PageHeader
+        eyebrow="ReserveProof · curator risk"
+        title="What would freeze, and when."
+        lede="For vault curators and risk teams: every solvency-gated market on both testnets, the custody proof it depends on, how much room that proof has left, and exactly what would stop it. Everything is read live from the chain every 30 seconds."
+        actions={
+          <>
+            <Button asChild variant="outline" size="sm">
+              <a href={`${GITHUB_URL}/actions/workflows/ops-epoch.yml`} target="_blank" rel="noreferrer">
+                Epoch publisher <ArrowUpRight className="h-3.5 w-3.5" />
+              </a>
+            </Button>
+            <Button asChild variant="ghost" size="sm">
+              <a href="/api/risk?network=robinhoodTestnet" target="_blank" rel="noreferrer">
+                JSON feed
+              </a>
+            </Button>
+          </>
+        }
+      />
+      <div className="container space-y-8 py-10 lg:py-12">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <KpiCard
+            label="Gated consumers open"
+            display={consumers.length ? `${openCount} / ${consumers.length}` : "—"}
+            tone={consumers.length && openCount < consumers.length ? "bad" : consumers.length ? "ok" : "neutral"}
+            sub={`across ${reports.length || "—"} chains`}
+          />
+          <KpiCard
+            label="Tightest headroom"
+            display={tightest ? pct(tightest.a.coverage!.headroomBps) : "—"}
+            tone={tightest && tightest.a.coverage!.headroomBps! < 0 ? "bad" : "neutral"}
+            sub={tightest ? `${tightest.a.label} on ${tightest.r.label}: drop before LIVE_SHORT` : "reserves above the floor"}
+          />
+          <KpiCard
+            label="Soonest stale"
+            display={soonestStale ? dur(Math.max(0, soonestStale.a.staleness!.staleAt - now)) : "—"}
+            tone={soonestStale && soonestStale.a.staleness!.staleAt <= now ? "bad" : "neutral"}
+            sub={soonestStale ? `${soonestStale.a.label} on ${soonestStale.r.label}, ${utc(soonestStale.a.staleness!.staleAt)}` : undefined}
+          />
+          <KpiCard
+            label="Next scheduled publish"
+            display={nextPublish ? dur(Math.max(0, nextPublish - now)) : "—"}
+            sub={nextPublish ? `${utc(nextPublish)} · every 3 days` : undefined}
+          />
+        </div>
 
-      <section className="live-strip" aria-label="Summary">
-        <div className="strip-cell">
-          <span className="label">Gated consumers open</span>
-          <span className={`big ${consumers.length && openCount < consumers.length ? "bad-text" : ""}`}>
-            {consumers.length ? `${openCount} / ${consumers.length}` : "—"}
-          </span>
-          <span className="sub">across {reports.length || "—"} chains</span>
-        </div>
-        <div className="strip-cell">
-          <span className="label">Tightest headroom</span>
-          <span className={`big ${tightest && tightest.a.coverage!.headroomBps! < 0 ? "bad-text" : ""}`}>
-            {tightest ? pct(tightest.a.coverage!.headroomBps) : "—"}
-          </span>
-          <span className="sub">
-            {tightest ? `${tightest.a.label} on ${tightest.r.label}: drop before LIVE_SHORT` : "reserves above the floor"}
-          </span>
-        </div>
-        <div className="strip-cell">
-          <span className="label">Soonest stale</span>
-          <span className={`big ${soonestStale && soonestStale.a.staleness!.staleAt <= now ? "bad-text" : ""}`}>
-            {soonestStale ? dur(Math.max(0, soonestStale.a.staleness!.staleAt - now)) : "—"}
-          </span>
-          <span className="sub">
-            {soonestStale ? `${soonestStale.a.label} on ${soonestStale.r.label}, ${utc(soonestStale.a.staleness!.staleAt)}` : ""}
-          </span>
-        </div>
-        <div className="strip-cell">
-          <span className="label">Next scheduled publish</span>
-          <span className="big">{nextPublish ? dur(Math.max(0, nextPublish - now)) : "—"}</span>
-          <span className="sub">{nextPublish ? `${utc(nextPublish)} · every 3 days` : ""}</span>
-        </div>
-      </section>
-
-      <div className="risk-grid">
-        {CHAINS.map((k) => (
-          <ChainColumn key={k} keyName={k} state={data[k]} now={now} />
-        ))}
+        <Tabs value={tab} onValueChange={setTab} className="lg:grid lg:grid-cols-2 lg:gap-8">
+          <TabsList className="mb-5 grid w-full grid-cols-2 lg:hidden">
+            {CHAINS.map((k) => (
+              <TabsTrigger key={k} value={k}>
+                {data[k]?.report?.label ?? k}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          {CHAINS.map((k) => (
+            <TabsContent key={k} value={k} forceMount className="mt-0 data-[state=inactive]:hidden lg:!block">
+              <ChainColumn keyName={k} state={data[k]} now={now} />
+            </TabsContent>
+          ))}
+        </Tabs>
       </div>
-
-    </div>
     </>
   );
 }
