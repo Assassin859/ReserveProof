@@ -8,7 +8,7 @@
  *   WATCH_ACT=0                  read-only: never publish or poke
  *   WATCH_REPUBLISH_BELOW_H=72   run ops-cycle when a proof has less than this left before STALE
  *   WATCH_WARN_BELOW_H=48        warn when, after healing, a proof still has less than this left
- *   WATCH_MIN_ETH=0.005          warn when the deployer's balance drops below this
+ *   WATCH_MIN_ETH=0.001          warn when the deployer's balance drops below this (a full cycle costs ~0.00003)
  *   ALERT_WEBHOOK_URL            optional Discord/Slack webhook for CRITICAL and WARN findings
  *   DEPLOYMENT                   default deployments/<network>.json
  */
@@ -40,7 +40,7 @@ const EXIT_SCAN = 50;
 const ACT = process.env.WATCH_ACT !== "0";
 const REPUBLISH_BELOW = Number(process.env.WATCH_REPUBLISH_BELOW_H || 72) * 3600;
 const WARN_BELOW = Number(process.env.WATCH_WARN_BELOW_H || 48) * 3600;
-const MIN_ETH = process.env.WATCH_MIN_ETH || "0.005";
+const MIN_ETH = process.env.WATCH_MIN_ETH || "0.001";
 
 type Level = "CRITICAL" | "WARN";
 type Finding = { level: Level; subject: string; message: string };
