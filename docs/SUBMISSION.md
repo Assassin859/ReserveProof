@@ -36,6 +36,12 @@ For Morpho Blue, where markets can't be modified, wrap the market's existing ora
 new SolvencyGatedMorphoOracle(existingOracle, solvencyOracle, custodianId, TSLA, 72 hours, 6 hours, 5000);
 ```
 
+Curators get a live risk view of every gated market at [/risk](https://reserveproof-teal.vercel.app/risk), also available as JSON at `/api/risk`. It shows:
+- coverage against the 103% floor, and how far reserves can fall before the proof fails;
+- time until the proof goes stale, against the next scheduled publish;
+- open disputes, challenges and exit claims;
+- which consumers would freeze, including the Morpho wrapper's freeze clock.
+
 **Every failed proof blocks.** The oracle reports only its first failing check (`STALE`, missing samples
 and a deactivated custodian come before `LIVE_SHORT`), so ignoring any reason would let a drain hide
 behind it.
@@ -145,6 +151,7 @@ Persona: **Kopi Wallet** (fictional SEA custodian). Everything below runs on the
 | 30–45s | 3 Verify my balance | *Try demo user* → browser rebuilds the tree, root matches on-chain, leaf proven; switch to TSLA to prove 1.5 real TSLA |
 | 45–85s | 4 What-if simulator | Drain → `LIVE_SHORT`, skip 8 days → `STALE`, stock split → `MULTIPLIER_DRIFT`, fraud dispute → `DISPUTED`; `GatedPayout` and the lending vault (borrow USDG, withdraw collateral while in debt) flip from Allowed to `Insolvent (reason)` in every scenario, while repaying and debt-free withdrawal stay open. The Morpho oracle row goes from `250 USDG per mTSLA` to `Insolvent (reason)` in all four scenarios |
 | 85–95s | 5 ExitRight | Live bonded claim opened by the demo user and settled by the operator, with explorer links |
+| (optional) | Curator risk (`/risk`) | Both chains side by side: 200% coverage vs the 103% floor, "48.5% can go before LIVE_SHORT", stale in ~7 days against the next publish on the 3-day schedule, no open disputes, and all 8 gated consumers open, with what each would freeze and the Morpho wrapper's 72h clock |
 | 95–110s | Morpho (code + terminal) | `SolvencyGatedMorphoOracle` in one constructor line; `forge test` runs `MorphoIntegration` against the real Morpho Blue core: a drain hidden behind a fresh unsampled epoch, `STALE` or a deactivated custodian still blocks borrow, while repay and lender withdraw work; a pre-started clock buys nothing; after 72 hours of one poked incident, `price()` returns 50% of the base and an underwater position is liquidated |
 
 Local rehearsal with real state changes (no testnet gas):

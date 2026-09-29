@@ -229,6 +229,18 @@ against the 103% floor, and contract verification. **Local Hardhat** is offered 
 - **ExitRight:** live bond, in-flight bond, claim count and the recorded claim-and-settle transactions on
   Robinhood.
 
+**Curator risk page:** [reserveproof-teal.vercel.app/risk](https://reserveproof-teal.vercel.app/risk) is
+for vault curators and risk teams. It shows both testnets side by side and re-reads the chain every 30
+seconds. For each custody proof it shows:
+- coverage against the 103% floor, and the headroom: how far reserves can fall before `LIVE_SHORT`;
+- time until the proof goes stale, compared with the next scheduled publish;
+- open disputes, balance challenges and ExitRight claims.
+
+It also lists every solvency-gated consumer (the payout, the lend/withdraw composer, the lending vault and
+the Morpho oracle wrapper). For each one it shows what freezes, what stays open, what is exposed and the
+wrapper's freeze clock, plus a "freezes if" list with the concrete thresholds. The same data is a JSON feed
+at `/api/risk?network=robinhoodTestnet` (or `arbitrumSepolia`) for curators who want to poll it.
+
 After redeploying, publishing or changing contracts, run `npm run web:sync` to refresh the UI's ABIs,
 testnet address books, liability books and ExitRight record.
 

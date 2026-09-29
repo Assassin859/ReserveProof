@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useReadContract, usePublicClient, useAccount } from "wagmi";
 import {
@@ -855,6 +856,9 @@ export function KopiApp() {
             <button type="button" className="ghost" onClick={() => goToScene(SCENE_WHATIF)}>
               Try the what-if simulator
             </button>
+            <Link className="ghost" href="/risk">
+              Curator risk
+            </Link>
             {DEMO_VIDEO_URL && (
               <a className="ghost" href={DEMO_VIDEO_URL} target="_blank" rel="noreferrer">
                 Watch the demo
@@ -1370,7 +1374,7 @@ export function KopiApp() {
           <a href={`${GITHUB_URL}/blob/master/docs/SUBMISSION.md`} target="_blank" rel="noreferrer">
             Submission
           </a>{" "}
-          · MIT licensed
+          · <Link href="/risk">Curator risk</Link> · MIT licensed
         </span>
         <span>
           {net.label}

@@ -4,6 +4,7 @@ import { http, createConfig, type Transport } from "wagmi";
 import { arbitrumSepolia } from "wagmi/chains";
 import { injected } from "@wagmi/core";
 import { defineChain, type Chain } from "viem";
+import { RPC_URLS } from "./rpc";
 
 /** Robinhood Chain testnet (46630). */
 export const robinhoodTestnet = defineChain({
@@ -28,8 +29,8 @@ const localRpc = process.env.NEXT_PUBLIC_ENABLE_LOCAL === "1" ? process.env.NEXT
 
 const chains: Chain[] = [robinhoodTestnet, arbitrumSepolia];
 const transports: Record<number, Transport> = {
-  [robinhoodTestnet.id]: http(process.env.NEXT_PUBLIC_RH_RPC || "https://rpc.testnet.chain.robinhood.com"),
-  [arbitrumSepolia.id]: http(process.env.NEXT_PUBLIC_ARB_RPC || "https://sepolia-rollup.arbitrum.io/rpc"),
+  [robinhoodTestnet.id]: http(RPC_URLS.robinhoodTestnet),
+  [arbitrumSepolia.id]: http(RPC_URLS.arbitrumSepolia),
 };
 if (localRpc) {
   const local = defineChain({

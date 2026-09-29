@@ -744,3 +744,222 @@ a.sub:hover {
   color: var(--muted);
   font-size: 0.78rem;
 }
+
+/* /risk: curator risk page */
+.ok-text {
+  color: #7cc79f;
+}
+
+.risk-hero {
+  margin-bottom: 1.5rem;
+}
+
+.risk-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .risk-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.risk-col {
+  min-width: 0;
+}
+
+.risk-col-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0.4rem;
+}
+
+.risk-col-head h2 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 1.35rem;
+  font-weight: 600;
+}
+
+.risk-col .section-kicker {
+  margin-top: 1.1rem;
+}
+
+.risk-card {
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.8rem 0.95rem;
+  margin-bottom: 0.7rem;
+  font-size: 0.86rem;
+}
+
+.risk-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.risk-card-head strong {
+  font-size: 1.02rem;
+}
+
+.risk-gated {
+  margin: 0.45rem 0 0;
+  color: #b9c2ca;
+  font-size: 0.8rem;
+}
+
+.risk-block {
+  margin-top: 0.75rem;
+  padding-top: 0.6rem;
+  border-top: 1px dashed var(--line);
+}
+
+.risk-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.risk-kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 0.9rem;
+  margin-top: 0.45rem;
+  font-size: 0.8rem;
+}
+
+.risk-kv > span:nth-child(odd) {
+  color: var(--muted);
+}
+
+.cov-bar {
+  position: relative;
+  height: 8px;
+  margin-top: 0.45rem;
+  background: var(--bg2);
+  border-radius: 999px;
+  overflow: visible;
+}
+
+.cov-fill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.cov-fill.ok {
+  background: var(--ok);
+}
+
+.cov-fill.bad {
+  background: var(--bad);
+}
+
+.cov-floor {
+  position: absolute;
+  top: -4px;
+  width: 2px;
+  height: 16px;
+  background: var(--accent);
+}
+
+.risk-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.risk-table th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  padding: 0.55rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.risk-table td {
+  vertical-align: top;
+  padding: 0.6rem;
+  border-bottom: 1px solid var(--line);
+  line-height: 1.45;
+}
+
+.risk-table tr:last-child td {
+  border-bottom: none;
+}
+
+.risk-table a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.risk-morpho {
+  margin-top: 0.35rem;
+  padding: 0.4rem 0.55rem;
+  background: var(--bg2);
+  border-radius: 6px;
+}
+
+.risk-triggers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+}
+
+.risk-triggers li {
+  display: flex;
+  gap: 0.55rem;
+  align-items: baseline;
+  background: var(--bg1);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.45rem 0.6rem;
+}
+
+.risk-triggers li.active {
+  border-color: var(--bad);
+}
+
+.risk-errors {
+  font-size: 0.76rem;
+  margin-top: 0.75rem;
+}
+
+@media (max-width: 560px) {
+  .risk-table thead {
+    display: none;
+  }
+
+  .risk-table td {
+    display: block;
+    border-bottom: none;
+    padding: 0.35rem 0.6rem;
+  }
+
+  .risk-table tr {
+    display: block;
+    border-bottom: 1px solid var(--line);
+    padding: 0.3rem 0;
+  }
+}
