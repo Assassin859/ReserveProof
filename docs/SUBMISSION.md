@@ -95,18 +95,15 @@ on mainnet yet. The same drill runs daily against the latest mainnet block in th
 [fork drill workflow](https://github.com/Assassin859/ReserveProof/actions/workflows/fork-drill.yml), and
 [/verify](https://reserveproof-teal.vercel.app/verify#morpho-fork) shows its latest result.
 
-**Price guards vs ReserveProof: they block bad prices; we block unproven reserves and unpaid exits.**
-Price guards such as [StockGuard](https://arbitrum-singapore.hackquest.io/projects/StockGuard) stop a Morpho
-market from lending on a price it can't trust (market closed, a split mid-flight, the wrong feed, a copycat
-token). They can't see a perfectly priced TSLA token whose custodian has sold the stock behind it. That's the
-failure ReserveProof blocks, and ReserveProof in turn doesn't judge the price: it forwards whatever its base
-oracle says. So the two stack, with the price guard as the base oracle:
+**A price oracle checks the price; ReserveProof checks the backing.** A Morpho market's price oracle stops
+it from lending on a price it can't trust. It can't see a perfectly priced TSLA token whose custodian has
+sold the stock behind it. That's the failure ReserveProof blocks, and ReserveProof in turn doesn't judge the
+price: it forwards whatever its base oracle says. So the two stack, with the market's existing oracle as the
+base:
 
 ```solidity
-new SolvencyGatedMorphoOracle(stockGuardOracle, solvencyOracle, custodianId, TSLA, 72 hours, 6 hours, 5000);
+new SolvencyGatedMorphoOracle(priceOracle, solvencyOracle, custodianId, TSLA, 72 hours, 6 hours, 5000);
 ```
-
-Side-by-side table on the live site: [/compare](https://reserveproof-teal.vercel.app/compare).
 
 ## By the numbers (the build)
 
@@ -142,15 +139,6 @@ Side-by-side table on the live site: [/compare](https://reserveproof-teal.vercel
 **ReserveProof** is an open-source proof-of-reserves and proof-of-liabilities stack for custodians that hold **USDG** and **Robinhood Stock Tokens**. Operators publish a sorted Merkle-sum liability tree; reserves are read on-chain via multi-sample + live balance checks (using `arbBlockNumber` where available). Integrators call `isSolvent(custodianId, asset)` / `status(...)` and get a fail-closed reason code — so payouts and lending can `require` solvency instead of trusting a dashboard.
 
 **ExitRight** is the withdrawability module: bonded claims with on-chain `settle`. Unpaid claims are slashed to the user and permanently mark the asset as exit-defaulted.
-
-**Positioning**
-
-| Prior art | Gap ReserveProof targets |
-|---|---|
-| Chainlink PoR | Feed-style reserve attestations; not full user-verifiable liabilities + gated composers |
-| Summa | Strong PoL ideas; we ship open contracts + CLI + fail-closed oracle for stock-token / USDG custodians |
-| Accountable | Closed / productized; we stay open-source, dual-chain allocations, ERC-8056 multiplier drift, ExitRight |
-| StockGuard (price guard, this buildathon) | Blocks bad prices (market closed, split mid-flight, wrong feed, copycat token); we block unproven reserves and unpaid exits. Complementary: our Morpho wrapper takes a price guard as its base oracle ([/compare](https://reserveproof-teal.vercel.app/compare)). Their Radar maps markets by price risk; [ours](https://reserveproof-teal.vercel.app/radar) maps them by custody: which would freeze on a failed proof, and which are copycats with no custodian at all |
 
 ## Business model
 
@@ -206,7 +194,6 @@ Persona: **Kopi Wallet** (fictional SEA custodian). Everything below runs on the
 | 30–45s | 3 Verify my balance | *Try demo user* → browser rebuilds the tree, root matches on-chain, leaf proven; switch to TSLA to prove 1.5 real TSLA |
 | 45–85s | 4 What-if simulator | Drain → `LIVE_SHORT`, skip 8 days → `STALE`, stock split → `MULTIPLIER_DRIFT`, fraud dispute → `DISPUTED`; `GatedPayout` and the lending vault (borrow USDG, withdraw collateral while in debt) flip from Allowed to `Insolvent (reason)` in every scenario, while repaying and debt-free withdrawal stay open. The Morpho oracle row goes from `250 USDG per mTSLA` to `Insolvent (reason)` in all four scenarios |
 | 85–95s | 5 ExitRight | Live bonded claim opened by the demo user and settled by the operator, with explorer links |
-| (optional) | How we differ (`/compare`) | "They block bad prices. We block unproven reserves and unpaid exits." Price guards vs ReserveProof side by side, and the one-constructor stack with a price guard as the Morpho base oracle |
 | (optional) | Mainnet radar (`/radar`) | Every live Morpho market on Robinhood Chain mainnet: 179 would-gate markets (707K USDG lent), filter to "reject" to show the 6 markets lending fake "USDG", one named exactly like Paxos's "Global Dollar" |
 | (optional) | Curator risk (`/risk`) | Both chains side by side: 200% coverage vs the 103% floor, "48.5% can go before LIVE_SHORT", stale in ~7 days against the next publish on the 3-day schedule, no open disputes, and all 8 gated consumers open, with what each would freeze and the Morpho wrapper's 72h clock |
 | 95–110s | Morpho (code + terminal) | `SolvencyGatedMorphoOracle` in one constructor line; `forge test` runs `MorphoIntegration` against the real Morpho Blue core: a drain hidden behind a fresh unsampled epoch, `STALE` or a deactivated custodian still blocks borrow, while repay and lender withdraw work; a pre-started clock buys nothing; after 72 hours of one poked incident, `price()` returns 50% of the base and an underwater position is liquidated |

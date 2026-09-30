@@ -22,7 +22,7 @@ It does three jobs:
 **ExitRight** extends solvency with a **USDG bond + withdrawal deadline**. If a user proves inclusion and is not paid in time through the contract, the bond compensates them and solvency flips false.
 
 **One-liner for judges:**  
-*Chainlink PoR reports an issuer's reserves through an oracle committee. Summa commits a custodian's liabilities but leaves the solvency check off-chain. ReserveProof reads reserves directly on-chain, checks them against a user-verifiable liabilities root, and exposes a fail-closed `isSolvent(custodianId, asset)` that any contract can require — plus ExitRight so users can force a bonded withdrawal.*
+*ReserveProof reads a custodian's reserves directly on-chain, checks them against a user-verifiable liabilities root, and exposes a fail-closed `isSolvent(custodianId, asset)` that any contract can require — plus ExitRight so users can force a bonded withdrawal.*
 
 ---
 
@@ -43,13 +43,12 @@ These are distinct failures. Proving reserves alone does not prove withdrawabili
 
 ### 2.2 Why existing tools are insufficient for this product
 
-| System | What it does | Gap relative to ReserveProof |
+| Approach | What it gives | What it leaves out |
 |---|---|---|
-| **Chainlink Proof of Reserve** | Oracle feeds of issuer/backing amounts | Not per-user custodial liabilities; often committee/self-reported issuer data |
-| **Summa** (EF research) | On-chain liability roots + inclusion proofs | Solvency vs reserves largely off-chain; project inactive since ~Aug 2024; Rust prover |
-| **SolvencyProof** (HackMoney 2026) | ZK attestation event | No sample contracts that *gate* payouts on solvency |
-| **Accountable** (commercial) | MST + enclaves + ZK; contracts can restrict on published proofs | Permissioned / closed product; not Stock-Token-native open infra |
-| **Gallery (this buildathon)** | Trading, risk, escrow, agent guards | No general PoR / solvency-oracle product |
+| Reserve feeds | A reported backing amount per issuer | Per-user custodial liabilities; the figure is often self-reported |
+| Liability proofs alone | On-chain liability roots and inclusion proofs | The solvency check against reserves stays off-chain |
+| One-off attestations | A point-in-time statement of solvency | Nothing on chain that *gates* payouts or lending on it |
+| Closed proof-of-reserves products | Published proofs that some contracts can read | Open, composable infrastructure native to Stock Tokens and USDG |
 
 ### 2.3 Stock Token–specific hazard (ERC-8056)
 
@@ -714,7 +713,6 @@ No open product decisions remain for MVP scope.
 - EIP-8056 — Scaled UI Amount Extension (`0xa60bf13d`)  
 - Paxos / Global Dollar (USDG) test token addresses above  
 - Robinhood Chain testnet — chain id `46630` · `ArbSys` precompile `address(100)`  
-- Summa · Chainlink PoR · Accountable — prior art  
 
 ---
 

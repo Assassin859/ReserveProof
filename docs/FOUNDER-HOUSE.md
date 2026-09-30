@@ -30,7 +30,7 @@ The read: USDG lending on Robinhood Chain is a half-billion-dollar business run 
 and stock-token lending is a rounding error beside it. It is fully borrowed and has no curator money in it.
 Our bet, which the first calls must test, is that curators stay out partly because nothing on chain tells
 them the collateral is really backed. A price feed can't see a perfectly priced token whose custodian has
-sold the stock behind it. ReserveProof blocks exactly that case, and it stacks on top of a price guard.
+sold the stock behind it. ReserveProof blocks exactly that case, and it stacks on top of any price oracle.
 
 ## 2. Buyers and the wedge
 
@@ -80,8 +80,8 @@ Paxos (see the ask).
 
 1. A mainnet deployment of the oracle stack on Robinhood Chain, run by us, with one partner custodian's
    book under proof (USDG or one stock token).
-2. One `SolvencyGatedMorphoOracle` wrapping the price oracle of their choice (a price guard such as
-   StockGuard can be the base), for one new market they cap as they like.
+2. One `SolvencyGatedMorphoOracle` wrapping the price oracle of their choice, for one new market they cap
+   as they like.
 3. A fork drill on their exact market before any money goes in: `npm run demo:morpho-fork`, pointed at their
    token, oracle and parameters, prints the freeze, the 72-hour cap and the 50% liquidation price as PASS or
    FAIL.
@@ -144,16 +144,9 @@ is set by value.
 - **Public content.** A weekly radar note on new copycat tokens and pending corporate actions. The 6 fake-USDG
   markets are the first issue.
 
-## 8. Competition and moat
+## 8. Moat
 
-| | What it does | Where we sit |
-|---|---|---|
-| **StockGuard** (this buildathon) | Blocks bad prices: market closed, split mid-flight, wrong feed, copycat token | **Complement.** It can't see a well-priced token with no backing; we don't judge price. Our wrapper takes it as the base oracle ([/compare](https://reserveproof-teal.vercel.app/compare)) |
-| **Chainlink Proof of Reserve** | Feed-style reserve attestations published by a node committee | Feeds report a number; they don't carry user-verifiable liabilities, disputes, exit bonds or a fail-closed gate with a bounded freeze |
-| **Summa** | Proof-of-liabilities research and tooling | We ship the deployed contracts, CLI, verifier and integrations, specific to USDG and ERC-8056 stock tokens |
-| **Accountable** | Closed, productized proof of reserves | We are open source and composable on chain, with dual-chain allocations, multiplier drift and ExitRight |
-
-**Moat:** the integrations, not the math. That means the Morpho wrapper tested against the real Morpho Blue
+The moat is the integrations, not the math. That means the Morpho wrapper tested against the real Morpho Blue
 core, `onlySolvent` in partners' contracts, and the radar's map of every market. Once curators gate on
 `isSolvent`, custodians publish to us because that's what the markets read. Open source removes the trust
 objection to a new vendor.

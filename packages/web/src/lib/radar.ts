@@ -356,7 +356,7 @@ export async function loadRadar(): Promise<RadarReport> {
           code: "MULTIPLIER_PENDING",
           text:
             `Corporate action pending${at ? ` at ${utc(at)}` : ""} (multiplier ${live ?? "?"} → ${to ?? "?"}): ` +
-            "a ReserveProof-gated market freezes now (MULTIPLIER_DRIFT) until the custodian recommits; price guards pause too.",
+            "a ReserveProof-gated market freezes now (MULTIPLIER_DRIFT) until the custodian recommits.",
         });
       }
       if (live !== null && reg?.current != null && !sameMultiplier(live, reg.current)) {

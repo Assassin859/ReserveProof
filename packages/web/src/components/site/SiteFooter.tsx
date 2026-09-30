@@ -11,7 +11,6 @@ const COLUMNS: { title: string; links: { label: string; href: string; external?:
       { label: "Mainnet radar", href: "/radar" },
       { label: "Curator risk", href: "/risk" },
       { label: "Status", href: "/status" },
-      { label: "How we differ", href: "/compare" },
     ],
   },
   {

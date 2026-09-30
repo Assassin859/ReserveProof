@@ -533,7 +533,7 @@ export function RadarView() {
                 </li>
                 <li>
                   <strong className="text-foreground">Wouldn&apos;t gate</strong>: crypto or other collateral with no custodian to
-                  prove. Price guards are the right tool there.
+                  prove. The market&apos;s price oracle is the right check there.
                 </li>
                 <li>
                   <strong className="text-destructive">Reject</strong>: the collateral or the loan token is not the registry-listed

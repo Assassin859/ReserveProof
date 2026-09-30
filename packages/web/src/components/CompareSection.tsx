@@ -6,8 +6,6 @@ import { StateBadge } from "./site/StateBadge";
 import { Card, CardContent } from "./ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 
-const STOCKGUARD_URL = "https://arbitrum-singapore.hackquest.io/projects/StockGuard";
-
 const code = (s: string) => <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.8em] text-foreground">{s}</code>;
 
 const ROWS: { label: string; price: React.ReactNode; reserve: React.ReactNode }[] = [
@@ -18,7 +16,7 @@ const ROWS: { label: string; price: React.ReactNode; reserve: React.ReactNode }[
   },
   {
     label: "What it catches",
-    price: "Market closed, a split or dividend mid-flight, the wrong feed, a copycat token",
+    price: "A stale or wrong price feed, a closed market, a price that moves too far too fast",
     reserve: (
       <>
         Reserves drained ({code("LIVE_SHORT")}), a proof left to go {code("STALE")}, liabilities understated (user fraud
@@ -34,21 +32,21 @@ const ROWS: { label: string; price: React.ReactNode; reserve: React.ReactNode }[
   },
   {
     label: "On Morpho",
-    price: "Replaces the market's oracle",
-    reserve: "Wraps any base oracle, including a price guard",
+    price: "Is the market's oracle",
+    reserve: "Wraps the market's existing oracle and gates it",
   },
 ];
 
 const STACK_CODE = `new SolvencyGatedMorphoOracle(
-    stockGuardOracle,           // base price: already refuses bad prices
+    priceOracle,                // base price from the market's existing oracle
     solvencyOracle, custodianId, TSLA,
     72 hours, 6 hours, 5000     // freeze cap, poke gap, 50% price after the cap
 );`;
 
 const link = "text-primary underline-offset-4 hover:underline";
 
-/** Price guards vs ReserveProof: why a stock-token market needs both. Used on / and /compare. */
-export function CompareSection({ standalone = false, onWhatIf }: { standalone?: boolean; onWhatIf?: () => void }) {
+/** Price oracles vs reserve proofs: why a stock-token market needs both. Used on the home page. */
+export function CompareSection({ onWhatIf }: { onWhatIf?: () => void }) {
   const whatIf = onWhatIf ? (
     <a
       href="#demo"
@@ -68,25 +66,14 @@ export function CompareSection({ standalone = false, onWhatIf }: { standalone?: 
   return (
     <Section
       id="compare"
-      kicker={standalone ? undefined : "Price safety is not reserve safety"}
-      title="They block bad prices. We block unproven reserves and unpaid exits."
+      kicker="Price safety is not reserve safety"
+      title="A price oracle checks the price. ReserveProof checks the backing."
       description={
         <>
-          Price guards such as{" "}
-          <a href={STOCKGUARD_URL} target="_blank" rel="noreferrer" className={link}>
-            StockGuard
-          </a>{" "}
-          stop a Morpho market from lending on a price it can&apos;t trust. ReserveProof stops it from lending against a
-          stock token whose custodian can&apos;t prove it still holds the stock. They fail on different days, so a market
-          needs both.
+          A market&apos;s price oracle stops it from lending on a price it can&apos;t trust. ReserveProof stops it from
+          lending against a stock token whose custodian can&apos;t prove it still holds the stock. They fail on different
+          days, so a market needs both.
         </>
-      }
-      actions={
-        standalone ? undefined : (
-          <Link href="/compare" className="text-sm text-primary underline-offset-4 hover:underline">
-            How we differ →
-          </Link>
-        )
       }
     >
       <div className="hidden overflow-hidden rounded-xl border border-border/70 bg-card/50 md:block">
@@ -94,7 +81,7 @@ export function CompareSection({ standalone = false, onWhatIf }: { standalone?: 
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className="w-44" />
-              <TableHead className="text-muted-foreground">Price guards (StockGuard)</TableHead>
+              <TableHead className="text-muted-foreground">Price oracle</TableHead>
               <TableHead className="text-primary">ReserveProof</TableHead>
             </TableRow>
           </TableHeader>
@@ -116,7 +103,7 @@ export function CompareSection({ standalone = false, onWhatIf }: { standalone?: 
         {ROWS.map((r) => (
           <div key={r.label} className="rounded-xl border border-border/70 bg-card/50 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{r.label}</p>
-            <p className="mt-3 text-[0.7rem] uppercase tracking-wide text-muted-foreground">Price guards</p>
+            <p className="mt-3 text-[0.7rem] uppercase tracking-wide text-muted-foreground">Price oracle</p>
             <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">{r.price}</p>
             <p className="mt-3 text-[0.7rem] uppercase tracking-wide text-primary">ReserveProof</p>
             <p className="mt-0.5 text-sm leading-relaxed">{r.reserve}</p>
@@ -128,7 +115,7 @@ export function CompareSection({ standalone = false, onWhatIf }: { standalone?: 
         <CardContent className="space-y-4 p-5 md:p-6">
           <div className="flex flex-wrap items-center gap-3">
             <StateBadge state="ok">stack them</StateBadge>
-            <p className="text-sm">One constructor: the price guard becomes the base oracle, ReserveProof gates it.</p>
+            <p className="text-sm">One constructor: the market&apos;s price oracle becomes the base, ReserveProof gates it.</p>
           </div>
           <CodeBlock code={STACK_CODE} copyLabel="Copy constructor" />
           <p className="text-sm leading-relaxed text-muted-foreground">

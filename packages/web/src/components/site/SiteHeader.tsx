@@ -20,7 +20,6 @@ const NAV = [
   { href: "/radar", label: "Radar", match: "/radar" },
   { href: "/risk", label: "Curator risk", match: "/risk" },
   { href: "/status", label: "Status", match: "/status" },
-  { href: "/compare", label: "Compare", match: "/compare" },
 ];
 
 const LEVEL_TEXT: Record<Level, string> = {

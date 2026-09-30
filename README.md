@@ -36,18 +36,16 @@ ReserveProof gives them that signal, fail-closed:
 - Fail-closed `isSolvent(custodianId, asset)` that payouts and lending can `require`
 - **ExitRight** — bonded withdrawal with on-chain `settle`
 
-**Where it fits: price guards block bad prices; we block unproven reserves and unpaid exits.** A price
-guard (such as [StockGuard](https://arbitrum-singapore.hackquest.io/projects/StockGuard)) refuses to price a
-stock token when the market is closed, a split is mid-flight or the feed is wrong. It can't see a perfectly
-priced token whose custodian has sold the stock behind it. ReserveProof can, and it doesn't judge the price,
-so the two stack in one constructor, with the price guard as the base oracle:
+**Where it fits: a price oracle checks the price; ReserveProof checks the backing.** A market's price oracle
+stops it from lending on a stale or wrong price. It can't see a perfectly priced token whose custodian has
+sold the stock behind it. ReserveProof can, and it doesn't judge the price, so the two stack in one
+constructor, with the market's existing oracle as the base:
 
 ```solidity
-new SolvencyGatedMorphoOracle(stockGuardOracle, solvencyOracle, custodianId, TSLA, 72 hours, 6 hours, 5000);
+new SolvencyGatedMorphoOracle(priceOracle, solvencyOracle, custodianId, TSLA, 72 hours, 6 hours, 5000);
 ```
 
-Side by side: [reserveproof-teal.vercel.app/compare](https://reserveproof-teal.vercel.app/compare). Every
-live mainnet market, marked would gate / wouldn't / copycat:
+Every live mainnet market, marked would gate / wouldn't / copycat:
 [reserveproof-teal.vercel.app/radar](https://reserveproof-teal.vercel.app/radar).
 
 See [docs/technical-spec.md](docs/technical-spec.md) for the full design.
