@@ -2,7 +2,8 @@ name: Watchtower
 
 # Hourly check of every published proof. Re-publishes if a scheduled ops-epoch run was missed
 # (under 72h to STALE), keeps the gated Morpho oracle's incident clock alive, and fails the run
-# (GitHub emails the failure) on anything it can't heal.
+# (GitHub emails the failure) on anything it can't heal. watchtower-scheduler.yml dispatches it every
+# hour; the cron here is a backup, since GitHub skips most scheduled slots.
 on:
   schedule:
     - cron: "23 * * * *"

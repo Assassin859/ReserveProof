@@ -366,8 +366,9 @@ export function StatusView() {
                   the publisher has under 0.001 ETH.
                 </li>
                 <li>
-                  GitHub runs scheduled workflows best-effort and can start them hours late, so a gap in the hourly bar is shown as
-                  it is rather than hidden. The watchtower re-publishes whenever a proof has under 72 hours left, so a late check
+                  GitHub runs cron workflows best-effort and skips many slots, so a small scheduler workflow dispatches the
+                  watchtower on the hour, with the cron as a backup. Any gap left in the hourly bar is shown as it is rather than
+                  hidden. The watchtower re-publishes whenever a proof has under 72 hours left, so a late check
                   still lands days before anything goes stale.
                 </li>
                 <li>

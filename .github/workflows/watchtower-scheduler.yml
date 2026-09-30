@@ -1,0 +1,40 @@
+name: Watchtower scheduler
+
+# GitHub runs cron workflows best-effort and skips most hourly slots, so this keeps the watchtower
+# on the hour: wait for the next :23 UTC slot, dispatch watchtower.yml, then dispatch itself for the
+# following hour. The cron below only restarts the chain if it ever breaks. To stop the chain,
+# disable this workflow.
+on:
+  schedule:
+    - cron: "53 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+# At most one run waits: a newer dispatch replaces a queued cron restart, so only one chain exists.
+concurrency:
+  group: watchtower-scheduler
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Wait for the next :23 UTC slot
+        run: |
+          now=$(date +%s)
+          next=$(( now / 3600 * 3600 + 23 * 60 ))
+          if [ "$next" -le $(( now + 60 )) ]; then next=$(( next + 3600 )); fi
+          echo "waiting $(( next - now ))s for the $(date -u -d @"$next" +%H:%M) UTC slot"
+          sleep $(( next - now ))
+      - name: Dispatch the watchtower
+        run: gh workflow run watchtower.yml --ref "${{ github.ref_name }}" -f act=true
+      - name: Schedule the next slot
+        if: success() || failure()
+        run: gh workflow run watchtower-scheduler.yml --ref "${{ github.ref_name }}"

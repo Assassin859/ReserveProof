@@ -231,7 +231,8 @@ export async function loadStatus(): Promise<StatusReport> {
       })
     ),
     workflowRuns("watchtower.yml", 100).then(
-      (r) => r,
+      // A run cancelled in the deployer queue never checked anything, so it is neither a check nor a failure.
+      (r) => r.filter((x) => x.conclusion !== "cancelled" && x.conclusion !== "skipped"),
       (e) => {
         errors.push(errMsg(e));
         return null;
